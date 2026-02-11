@@ -1,0 +1,102 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: mixed-line-ending
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.0
+    hooks:
+      # Run the linter
+      - id: ruff
+        args: [--fix]
+      # Run the formatter
+      - id: ruff-format
+
+  # find unused code
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: 'v2.14'
+    hooks:
+      - id: vulture
+
+  # monitor code complexity
+  - repo: https://github.com/rubik/xenon
+    rev: v0.9.3
+    hooks:
+    - id: xenon
+      args: ['--max-absolute=E', '--max-modules=D', '--max-average=C']
+
+  - repo: local
+    hooks:
+    - id: check-commit-msg
+      name: check-commit-msg
+      description: Enforce imperative mood in commit messages
+      entry: bash
+      args:
+        - -c
+        - |
+          # Works with worktrees - uses passed filename
+          commit_file="$1"
+          if [ -f "$commit_file" ]; then
+            first_line=$(head -n1 "$commit_file")
+            # Skip merge commits
+            if echo "$first_line" | grep -q "^Merge"; then
+              exit 0
+            fi
+            # Check if starts with capital letter (imperative mood)
+            first_char=$(echo "$first_line" | cut -c1)
+            if [[ "$first_char" =~ [a-z] ]]; then
+              echo "❌ Commit message should start with a capital letter (imperative mood)"
+              echo "   Bad:  'added new feature' or 'adding new feature'"
+              echo "   Good: 'Add new feature'"
+              exit 1
+            fi
+          fi
+      language: system
+      pass_filenames: true
+      stages: [commit-msg]
+
+    - id: fast-tests
+      name: fast-tests
+      description: Run fast tests (optional - enable with ENABLE_PRE_PUSH_TESTS=1)
+      entry: bash
+      args:
+        - -c
+        - |
+          # Only run if explicitly enabled via environment variable
+          if [ "$ENABLE_PRE_PUSH_TESTS" = "1" ]; then
+            echo "Running fast tests..."
+            uv run pytest -m "not slow" --tb=short
+          else
+            # Silent pass - tests not enabled
+            exit 0
+          fi
+      language: system
+      pass_filenames: false
+      stages: [push]
+
+    - id: sync-dependencies
+      name: sync-dependencies
+      description: Auto-sync dependencies when pyproject.toml changes
+      entry: bash
+      args:
+        - -c
+        - |
+          # Check if pyproject.toml was changed
+          if git diff --cached --name-only | grep -q "^pyproject.toml$"; then
+            if command -v uv &> /dev/null; then
+              echo "📦 pyproject.toml changed, running uv sync..."
+              uv sync --all-extras
+              echo "✅ Dependencies synced"
+            fi
+          fi
+      language: system
+      pass_filenames: false
+      always_run: true
