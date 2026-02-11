@@ -21,6 +21,46 @@ Portolake provides ACID transactions, concurrent writes, and time travel for Por
 
 **Pre-release** — API and implementation in progress.
 
+## Installation
+
+### Recommended: pipx (for global use)
+
+```bash
+pipx install portolake
+```
+
+This installs `portolake` in an isolated environment while making the command globally available.
+
+If you don't have pipx installed:
+```bash
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+```
+
+### Alternative: pip
+
+```bash
+pip install portolake
+```
+
+**Note:** This installs into your global or user site-packages and may conflict with other packages.
+
+### For Development
+
+Use [uv](https://github.com/astral-sh/uv) for local development:
+
+```bash
+git clone https://github.com/portolan-sdi/portolake.git
+cd portolake
+uv sync --all-extras
+```
+
+See [Contributing Guide](docs/contributing.md) for full development setup.
+
+## Documentation
+
+- [Contributing Guide](docs/contributing.md)
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE)
