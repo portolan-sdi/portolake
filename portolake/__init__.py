@@ -39,11 +39,11 @@ class IcebergBackend:
         version = backend.get_current_version("my-collection")
     """
 
-    def get_current_version(self, collection: str) -> Any:
+    def get_current_version(self, _collection: str) -> Any:
         """Get the current (latest) version of a collection.
 
         Args:
-            collection: Collection identifier/path.
+            _collection: Collection identifier/path.
 
         Returns:
             The current Version object.
@@ -53,11 +53,11 @@ class IcebergBackend:
         """
         raise NotImplementedError("IcebergBackend.get_current_version not yet implemented")
 
-    def list_versions(self, collection: str) -> list[Any]:
+    def list_versions(self, _collection: str) -> list[Any]:
         """List all versions of a collection, oldest first.
 
         Args:
-            collection: Collection identifier/path.
+            _collection: Collection identifier/path.
 
         Returns:
             List of Version objects, ordered oldest to newest.
@@ -69,20 +69,20 @@ class IcebergBackend:
 
     def publish(
         self,
-        collection: str,
-        assets: dict[str, str],
-        schema: dict[str, Any],
-        breaking: bool,
-        message: str,
+        _collection: str,
+        _assets: dict[str, str],
+        _schema: dict[str, Any],
+        _breaking: bool,
+        _message: str,
     ) -> Any:
         """Publish a new version of a collection.
 
         Args:
-            collection: Collection identifier/path.
-            assets: Mapping of asset names to asset paths/URIs.
-            schema: Schema fingerprint for change detection.
-            breaking: Whether this is a breaking change.
-            message: Human-readable description of the change.
+            _collection: Collection identifier/path.
+            _assets: Mapping of asset names to asset paths/URIs.
+            _schema: Schema fingerprint for change detection.
+            _breaking: Whether this is a breaking change.
+            _message: Human-readable description of the change.
 
         Returns:
             The newly created Version object.
@@ -92,15 +92,15 @@ class IcebergBackend:
         """
         raise NotImplementedError("IcebergBackend.publish not yet implemented")
 
-    def rollback(self, collection: str, target_version: str) -> Any:
+    def rollback(self, _collection: str, _target_version: str) -> Any:
         """Rollback to a previous version.
 
         Creates a NEW version with the contents of the target version,
         preserving full history.
 
         Args:
-            collection: Collection identifier/path.
-            target_version: Semantic version string to roll back to.
+            _collection: Collection identifier/path.
+            _target_version: Semantic version string to roll back to.
 
         Returns:
             The newly created Version object (representing the rollback).
@@ -110,13 +110,13 @@ class IcebergBackend:
         """
         raise NotImplementedError("IcebergBackend.rollback not yet implemented")
 
-    def prune(self, collection: str, keep: int, dry_run: bool) -> list[Any]:
+    def prune(self, _collection: str, _keep: int, _dry_run: bool) -> list[Any]:
         """Remove old versions, keeping the N most recent.
 
         Args:
-            collection: Collection identifier/path.
-            keep: Number of recent versions to keep.
-            dry_run: If True, don't delete, just report what would be deleted.
+            _collection: Collection identifier/path.
+            _keep: Number of recent versions to keep.
+            _dry_run: If True, don't delete, just report what would be deleted.
 
         Returns:
             List of Version objects that were (or would be) deleted.
@@ -126,11 +126,11 @@ class IcebergBackend:
         """
         raise NotImplementedError("IcebergBackend.prune not yet implemented")
 
-    def check_drift(self, collection: str) -> dict[str, Any]:
+    def check_drift(self, _collection: str) -> dict[str, Any]:
         """Check for drift between local and remote state.
 
         Args:
-            collection: Collection identifier/path.
+            _collection: Collection identifier/path.
 
         Returns:
             DriftReport with drift status and details.
