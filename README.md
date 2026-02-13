@@ -55,6 +55,25 @@ cd portolake
 uv sync --all-extras
 ```
 
+### Developing with portolan-cli
+
+To test portolake as a plugin alongside portolan-cli:
+
+```bash
+# From your portolan-cli directory
+cd path/to/portolan-cli
+uv pip install -e path/to/portolake
+
+# Verify integration
+uv run python -c "
+from portolan_cli.backends import get_backend
+backend = get_backend('iceberg')
+print(f'Loaded: {backend.__class__.__name__}')
+"
+```
+
+Editable mode (`-e`) means changes to portolake take effect immediately.
+
 See [Contributing Guide](docs/contributing.md) for full development setup.
 
 ## Documentation
