@@ -23,6 +23,52 @@ if TYPE_CHECKING:
     # Actual implementation will import from portolan_cli.backends.protocol
     pass
 
+# Core Iceberg metadata & types
+from portolake.iceberg_metadata import (
+    IcebergTable,
+    _arrow_schema_to_iceberg,
+    _arrow_to_iceberg_schema,
+    _arrow_type_to_iceberg,
+    _arrow_type_to_pyiceberg,
+    add_iceberg_field_ids,
+    create_name_mapping,
+    create_table_metadata,
+    generate_manifest_files,
+    parquet_to_iceberg_table,
+)
+
+# REST catalog generation
+from portolake.iceberg_rest_catalog import (
+    create_catalog_config,
+    create_load_table_response,
+    create_namespace_detail,
+    create_namespaces_list,
+    create_tables_list,
+    generate_static_catalog,
+)
+
+# Namespace utilities
+from portolake.namespace_utils import (
+    arcgis_folder_to_namespace,
+    build_namespace_tree,
+    namespace_depth,
+    namespace_parts,
+    namespace_to_iceberg,
+    validate_namespace,
+)
+
+# SDI catalog (STAC + ISO 19115)
+from portolake.sdi_catalog import (
+    create_items_table,
+    create_stac_iso_record,
+    create_stac_iso_schema,
+    detect_parquet_type,
+    extract_geoparquet_metadata,
+    extract_parquet_metadata,
+    extract_raquet_metadata,
+    generate_sdi_catalog,
+)
+
 
 class IcebergBackend:
     """Enterprise versioning backend using Apache Iceberg + Icechunk.
@@ -40,31 +86,11 @@ class IcebergBackend:
     """
 
     def get_current_version(self, _collection: str) -> Any:
-        """Get the current (latest) version of a collection.
-
-        Args:
-            _collection: Collection identifier/path.
-
-        Returns:
-            The current Version object.
-
-        Raises:
-            NotImplementedError: Method not yet implemented.
-        """
+        """Get the current (latest) version of a collection."""
         raise NotImplementedError("IcebergBackend.get_current_version not yet implemented")
 
     def list_versions(self, _collection: str) -> list[Any]:
-        """List all versions of a collection, oldest first.
-
-        Args:
-            _collection: Collection identifier/path.
-
-        Returns:
-            List of Version objects, ordered oldest to newest.
-
-        Raises:
-            NotImplementedError: Method not yet implemented.
-        """
+        """List all versions of a collection, oldest first."""
         raise NotImplementedError("IcebergBackend.list_versions not yet implemented")
 
     def publish(
@@ -75,70 +101,57 @@ class IcebergBackend:
         _breaking: bool,
         _message: str,
     ) -> Any:
-        """Publish a new version of a collection.
-
-        Args:
-            _collection: Collection identifier/path.
-            _assets: Mapping of asset names to asset paths/URIs.
-            _schema: Schema fingerprint for change detection.
-            _breaking: Whether this is a breaking change.
-            _message: Human-readable description of the change.
-
-        Returns:
-            The newly created Version object.
-
-        Raises:
-            NotImplementedError: Method not yet implemented.
-        """
+        """Publish a new version of a collection."""
         raise NotImplementedError("IcebergBackend.publish not yet implemented")
 
     def rollback(self, _collection: str, _target_version: str) -> Any:
-        """Rollback to a previous version.
-
-        Creates a NEW version with the contents of the target version,
-        preserving full history.
-
-        Args:
-            _collection: Collection identifier/path.
-            _target_version: Semantic version string to roll back to.
-
-        Returns:
-            The newly created Version object (representing the rollback).
-
-        Raises:
-            NotImplementedError: Method not yet implemented.
-        """
+        """Rollback to a previous version."""
         raise NotImplementedError("IcebergBackend.rollback not yet implemented")
 
     def prune(self, _collection: str, _keep: int, _dry_run: bool) -> list[Any]:
-        """Remove old versions, keeping the N most recent.
-
-        Args:
-            _collection: Collection identifier/path.
-            _keep: Number of recent versions to keep.
-            _dry_run: If True, don't delete, just report what would be deleted.
-
-        Returns:
-            List of Version objects that were (or would be) deleted.
-
-        Raises:
-            NotImplementedError: Method not yet implemented.
-        """
+        """Remove old versions, keeping the N most recent."""
         raise NotImplementedError("IcebergBackend.prune not yet implemented")
 
     def check_drift(self, _collection: str) -> dict[str, Any]:
-        """Check for drift between local and remote state.
-
-        Args:
-            _collection: Collection identifier/path.
-
-        Returns:
-            DriftReport with drift status and details.
-
-        Raises:
-            NotImplementedError: Method not yet implemented.
-        """
+        """Check for drift between local and remote state."""
         raise NotImplementedError("IcebergBackend.check_drift not yet implemented")
 
 
-__all__ = ["__version__", "IcebergBackend"]
+__all__ = [
+    "__version__",
+    "IcebergBackend",
+    # iceberg_metadata
+    "IcebergTable",
+    "_arrow_schema_to_iceberg",
+    "_arrow_to_iceberg_schema",
+    "_arrow_type_to_iceberg",
+    "_arrow_type_to_pyiceberg",
+    "add_iceberg_field_ids",
+    "create_name_mapping",
+    "create_table_metadata",
+    "generate_manifest_files",
+    "parquet_to_iceberg_table",
+    # iceberg_rest_catalog
+    "create_catalog_config",
+    "create_load_table_response",
+    "create_namespace_detail",
+    "create_namespaces_list",
+    "create_tables_list",
+    "generate_static_catalog",
+    # sdi_catalog
+    "create_items_table",
+    "create_stac_iso_record",
+    "create_stac_iso_schema",
+    "detect_parquet_type",
+    "extract_geoparquet_metadata",
+    "extract_parquet_metadata",
+    "extract_raquet_metadata",
+    "generate_sdi_catalog",
+    # namespace_utils
+    "arcgis_folder_to_namespace",
+    "build_namespace_tree",
+    "namespace_depth",
+    "namespace_parts",
+    "namespace_to_iceberg",
+    "validate_namespace",
+]
