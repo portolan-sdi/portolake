@@ -25,9 +25,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: GIS",
 ]
 dependencies = [
-    "click>=8.3.1",
-    "geoparquet-io>=0.9.0",
+    "portolan-cli",
     "pyarrow>=12.0.0,<22.0.0",  # v22+ has ABI incompatibility with abseil on some systems
+    "pyiceberg[sql-sqlite]>=0.8.0",
 ]
 
 [project.entry-points."portolan.backends"]

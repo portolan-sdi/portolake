@@ -96,21 +96,81 @@ All PRs must pass these automated checks:
 
 ## Testing
 
-Tests use pytest. See `CLAUDE.md` for:
-- Test-Driven Development requirements
-- Available pytest markers (`@pytest.mark.unit`, etc.)
-- Test fixture conventions
+Tests use pytest with markers:
 
-**Running tests:**
+| Marker | Description |
+|--------|-------------|
+| `@pytest.mark.unit` | Fast, isolated, no I/O (< 100ms) |
+| `@pytest.mark.integration` | Multi-component, may touch filesystem |
+| `@pytest.mark.network` | Requires network (mocked locally) |
+| `@pytest.mark.slow` | Takes > 5 seconds |
+
 ```bash
-# All tests (except slow/network/benchmark)
+# All tests
 uv run pytest
 
-# Specific marker
+# Only unit tests
 uv run pytest -m unit
 
 # With coverage report
 uv run pytest --cov=portolake --cov-report=html
+```
+
+### Test Fixtures
+
+Shared fixtures in `tests/conftest.py`:
+
+- `iceberg_catalog` — Temporary SQLite-backed Iceberg catalog in `tmp_path`
+- `iceberg_backend` — `IcebergBackend` instance using the temporary catalog
+
+```python
+@pytest.mark.integration
+def test_publish_creates_version(iceberg_backend, tmp_path):
+    asset_file = tmp_path / "data.parquet"
+    asset_file.write_bytes(b"test data")
+
+    version = iceberg_backend.publish(
+        collection="test",
+        assets={"data.parquet": str(asset_file)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="test",
+    )
+    assert version.version == "1.0.0"
+```
+
+### Code Quality
+
+```bash
+# Lint and format
+uv run ruff check . --fix
+uv run ruff format .
+
+# Dead code detection
+uv run vulture portolake tests
+
+# Complexity
+uv run xenon --max-absolute=C portolake
+```
+
+## Project Structure
+
+```
+portolake/
+├── portolake/
+│   ├── __init__.py        # Package exports (IcebergBackend, __version__)
+│   ├── backend.py         # IcebergBackend — all 6 protocol methods
+│   ├── config.py          # Catalog configuration via load_catalog()
+│   └── versioning.py      # Semver logic, snapshot/Version conversion
+├── tests/
+│   ├── conftest.py        # Shared fixtures (tmp catalog, backend)
+│   ├── test_backend.py    # Integration tests for IcebergBackend
+│   ├── test_config.py     # Config resolution tests
+│   ├── test_entry_point.py # Plugin discovery tests
+│   ├── test_import.py     # Basic import tests
+│   └── test_versioning.py # Semver and conversion tests
+├── docs/                  # Documentation (MkDocs)
+└── pyproject.toml         # Dependencies and tool config
 ```
 
 ## Release Process

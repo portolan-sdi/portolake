@@ -1,0 +1,78 @@
+site_name: Portolake
+site_description: Lakehouse-grade versioning for Portolan catalogs
+site_author: Portolan SDI
+site_url: https://portolan-sdi.github.io/portolake/
+repo_name: portolan-sdi/portolake
+repo_url: https://github.com/portolan-sdi/portolake
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: https://raw.githubusercontent.com/portolan-sdi/portolan-cli/main/docs/assets/images/icon-white.svg
+  favicon: https://raw.githubusercontent.com/portolan-sdi/portolan-cli/main/docs/assets/images/logo.png
+  palette:
+    - scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to dark mode
+    - scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to light mode
+  features:
+    - navigation.top
+    - navigation.tabs
+    - navigation.sections
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/portolan-sdi/portolake
+      name: Portolake on GitHub
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            heading_level: 3
+            members_order: source
+            docstring_style: google
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.snippets:
+      base_path: .
+      check_paths: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Reference:
+    - API: reference/api.md
+    - Configuration: reference/configuration.md
+  - Contributing: contributing.md
