@@ -1,6 +1,7 @@
 # Development
 .worktrees/
 .portolake/
+.portolan/
 
 # Python
 __pycache__/
