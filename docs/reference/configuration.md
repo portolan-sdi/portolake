@@ -1,5 +1,24 @@
 # Configuration
 
+## Selecting the Iceberg Backend
+
+To use Portolake as your versioning backend, tell Portolan to use the `iceberg` backend:
+
+```bash
+# Option 1: Set in catalog config (persists)
+portolan config set backend iceberg
+
+# Option 2: Environment variable
+export PORTOLAN_BACKEND=iceberg
+
+# Option 3: Per-command flag
+portolan version --backend iceberg list demographics
+```
+
+Once set, all `portolan version` and `portolan push` commands will use Portolake's Iceberg backend.
+
+## Iceberg Catalog Configuration
+
 Portolake uses [PyIceberg's configuration system](https://py.iceberg.apache.org/configuration/) to configure the Iceberg catalog. No custom configuration files or environment variables are needed — everything uses the standard PyIceberg conventions.
 
 ## Defaults

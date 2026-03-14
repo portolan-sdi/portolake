@@ -53,8 +53,8 @@ class IcebergBackend:
         PYICEBERG_CATALOG__PORTOLAKE__WAREHOUSE=file:///...
     """
 
-    def __init__(self, catalog: Catalog | None = None) -> None:
-        self._catalog: Catalog = catalog if catalog is not None else create_catalog()
+    def __init__(self, catalog: Catalog | None = None, catalog_root: Path | None = None) -> None:
+        self._catalog: Catalog = catalog if catalog is not None else create_catalog(catalog_root)
         try:
             self._catalog.create_namespace(NAMESPACE)
         except Exception:
@@ -121,6 +121,7 @@ class IcebergBackend:
         schema: SchemaFingerprint,
         breaking: bool,
         message: str,
+        removed: set[str] | None = None,
     ) -> Version:
         """Publish a new version of a collection."""
         table_id = self._table_id(collection)
@@ -129,7 +130,23 @@ class IcebergBackend:
         current_version = self._get_current_version_str(table)
         next_ver = compute_next_version(current_version, breaking)
 
-        asset_objects, changes = build_assets(assets)
+        # Build new assets from input paths
+        new_asset_objects, changes = build_assets(assets)
+
+        # Merge with previous snapshot's assets if we have history
+        merged_assets = {}
+        snap = table.current_snapshot()
+        if snap is not None and snap.summary is not None:
+            prev_version = snapshot_to_version(snap)
+            merged_assets.update(prev_version.assets)
+
+        # Apply new assets (overwrite existing)
+        merged_assets.update(new_asset_objects)
+
+        # Remove requested assets
+        if removed:
+            for key in removed:
+                merged_assets.pop(key, None)
 
         schema_info = SchemaInfo(
             type=schema.get("hash", "unknown"),
@@ -140,10 +157,10 @@ class IcebergBackend:
         )
 
         props = version_to_snapshot_properties(
-            next_ver, breaking, message, asset_objects, schema_info, changes
+            next_ver, breaking, message, merged_assets, schema_info, changes
         )
 
-        arrow_table = _build_arrow_table(asset_objects)
+        arrow_table = _build_arrow_table(merged_assets)
         table.append(arrow_table, snapshot_properties=props)
 
         # Reload to get the committed snapshot

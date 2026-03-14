@@ -410,3 +410,115 @@ def test_directory_traversal_rejected(iceberg_backend):
 
     with pytest.raises(ValueError):
         iceberg_backend.list_versions("..")
+
+
+# --- catalog_root wiring ---
+
+
+@pytest.mark.integration
+def test_backend_with_catalog_root_creates_files_in_correct_location(tmp_path):
+    """IcebergBackend(catalog_root=path) should create iceberg.db under path/.portolan/."""
+    from portolake.backend import IcebergBackend
+
+    backend = IcebergBackend(catalog_root=tmp_path)
+    assert (tmp_path / ".portolan" / "iceberg.db").exists()
+
+    # Verify it works end-to-end
+    asset_file = tmp_path / "data.parquet"
+    asset_file.write_bytes(b"test data")
+    version = backend.publish(
+        collection="test-col",
+        assets={"data.parquet": str(asset_file)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="test",
+    )
+    assert version.version == "1.0.0"
+
+
+# --- publish with removed parameter ---
+
+
+@pytest.mark.integration
+def test_publish_with_removed_excludes_assets(iceberg_backend, tmp_path):
+    """publish(removed={"asset"}) should exclude that asset from the new version."""
+    f1 = tmp_path / "a.parquet"
+    f1.write_bytes(b"aaa")
+    f2 = tmp_path / "b.parquet"
+    f2.write_bytes(b"bbb")
+
+    # Publish v1 with two assets
+    iceberg_backend.publish(
+        collection="test-collection",
+        assets={"a.parquet": str(f1), "b.parquet": str(f2)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="v1 with two assets",
+    )
+
+    # Publish v2 removing one asset
+    v2 = iceberg_backend.publish(
+        collection="test-collection",
+        assets={},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="remove b",
+        removed={"b.parquet"},
+    )
+    assert "a.parquet" in v2.assets
+    assert "b.parquet" not in v2.assets
+
+
+@pytest.mark.integration
+def test_publish_with_removed_and_new_assets(iceberg_backend, tmp_path):
+    """publish can add new assets and remove old ones in the same call."""
+    f1 = tmp_path / "old.parquet"
+    f1.write_bytes(b"old")
+
+    iceberg_backend.publish(
+        collection="test-collection",
+        assets={"old.parquet": str(f1)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="v1",
+    )
+
+    f2 = tmp_path / "new.parquet"
+    f2.write_bytes(b"new")
+
+    v2 = iceberg_backend.publish(
+        collection="test-collection",
+        assets={"new.parquet": str(f2)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="swap assets",
+        removed={"old.parquet"},
+    )
+    assert "new.parquet" in v2.assets
+    assert "old.parquet" not in v2.assets
+
+
+@pytest.mark.integration
+def test_publish_removed_nonexistent_asset_is_noop(iceberg_backend, tmp_path):
+    """Removing an asset that doesn't exist should not raise."""
+    f1 = tmp_path / "data.parquet"
+    f1.write_bytes(b"data")
+
+    iceberg_backend.publish(
+        collection="test-collection",
+        assets={"data.parquet": str(f1)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="v1",
+    )
+
+    v2 = iceberg_backend.publish(
+        collection="test-collection",
+        assets={},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="remove ghost",
+        removed={"ghost.parquet"},
+    )
+    assert "data.parquet" in v2.assets
+    assert len(v2.assets) == 1

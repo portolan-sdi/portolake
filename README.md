@@ -22,11 +22,28 @@ Where Portolan's built-in backend stores versions in a JSON file (single-writer,
 <!-- --8<-- [start:quickstart] -->
 ## Quick Start
 
+### CLI Usage
+
 ```bash
 # Install portolake alongside portolan-cli
 pip install portolake
 
-# Use the Iceberg backend instead of the default file backend
+# Set Iceberg as the default versioning backend
+portolan config set backend iceberg
+
+# Now all version commands use Iceberg
+portolan version current demographics          # Show current version
+portolan version list demographics             # List all versions
+portolan version rollback demographics 1.0.0   # Rollback to a previous version
+portolan version prune demographics --keep 5   # Prune old versions
+
+# Or use --backend flag without changing config
+portolan version --backend iceberg list demographics
+```
+
+### Python API
+
+```python
 from portolan_cli.backends import get_backend
 
 backend = get_backend("iceberg")
@@ -80,6 +97,9 @@ pip install portolake
 ```bash
 pipx install portolan-cli
 pipx inject portolan-cli portolake
+
+# Set Iceberg as the default backend
+portolan config set backend iceberg
 ```
 
 ### For Development

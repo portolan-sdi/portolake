@@ -54,6 +54,9 @@ dev = [
     "vulture>=2.14",
     "xenon>=0.9.3",
 ]
+gcs = [
+    "gcsfs>=2026.2.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["portolake"]

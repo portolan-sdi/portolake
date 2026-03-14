@@ -11,7 +11,6 @@ See: https://py.iceberg.apache.org/configuration/
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from pyiceberg.catalog import Catalog, load_catalog
@@ -19,23 +18,23 @@ from pyiceberg.catalog import Catalog, load_catalog
 CATALOG_NAME = "portolake"
 
 
-def _default_properties() -> dict[str, str]:
+def _default_properties(catalog_root: Path | None = None) -> dict[str, str]:
     """Build default catalog properties (SQL/SQLite, local warehouse)."""
-    cwd = os.getcwd()
+    root = str(catalog_root or Path.cwd())
     return {
         "type": "sql",
-        "uri": f"sqlite:///{cwd}/.portolake/catalog.db",
-        "warehouse": f"file:///{cwd}/.portolake/warehouse",
+        "uri": f"sqlite:///{root}/.portolan/iceberg.db",
+        "warehouse": f"file:///{root}/.portolan/warehouse",
     }
 
 
-def create_catalog() -> Catalog:
+def create_catalog(catalog_root: Path | None = None) -> Catalog:
     """Create an Iceberg catalog using PyIceberg's load_catalog().
 
     Defaults to local SQL/SQLite. Users can override via standard PyIceberg
     environment variables (PYICEBERG_CATALOG__PORTOLAKE__*).
     """
-    defaults = _default_properties()
+    defaults = _default_properties(catalog_root)
     # Ensure the default catalog directory exists for SQLite
     uri = defaults["uri"]
     if uri.startswith("sqlite:///"):

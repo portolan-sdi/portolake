@@ -4,7 +4,21 @@ Portolake implements the `VersioningBackend` protocol from portolan-cli. Once in
 
 Currently, Portolake provides the **IcebergBackend** for vector/tabular data. An Icechunk backend for array/raster data is planned per [ADR-0015](https://github.com/portolan-sdi/portolan-cli/blob/main/context/shared/adr/0015-two-tier-versioning-architecture.md).
 
-## Loading the Backend
+## CLI Usage
+
+All versioning operations are available via `portolan version` commands when the backend is set to `iceberg`:
+
+```bash
+portolan config set backend iceberg
+
+portolan version current demographics          # Show current version
+portolan version list demographics             # List all versions
+portolan version rollback demographics 1.0.0   # Rollback to v1.0.0
+portolan version prune demographics --keep 5   # Prune old versions
+portolan version prune demographics --keep 3 --dry-run  # Preview pruning
+```
+
+## Loading the Backend (Python API)
 
 ```python
 from portolan_cli.backends import get_backend
