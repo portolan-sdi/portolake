@@ -28,14 +28,29 @@ def _default_properties(catalog_root: Path | None = None) -> dict[str, str]:
     }
 
 
+def _get_external_config() -> dict[str, str] | None:
+    """Get PyIceberg config for this catalog (YAML or env vars), if any."""
+    from pyiceberg.utils.config import Config
+
+    config = Config()
+    return config.get_catalog_config(CATALOG_NAME)
+
+
 def create_catalog(catalog_root: Path | None = None) -> Catalog:
     """Create an Iceberg catalog using PyIceberg's load_catalog().
 
-    Defaults to local SQL/SQLite. Users can override via standard PyIceberg
-    environment variables (PYICEBERG_CATALOG__PORTOLAKE__*).
+    If external configuration exists (YAML file or PYICEBERG_CATALOG__PORTOLAKE__*
+    env vars), those settings take precedence. Local SQL/SQLite defaults are used
+    as fallback for any properties not specified externally.
     """
+    external = _get_external_config()
+    if external and "type" in external and external["type"] != "sql":
+        # Non-SQLite catalog (e.g., REST/BigLake) — use external config only
+        return load_catalog(CATALOG_NAME)
+
+    # SQLite or no external config — use defaults (external config, if any,
+    # still overrides via PyIceberg's merge_config inside load_catalog)
     defaults = _default_properties(catalog_root)
-    # Ensure the default catalog directory exists for SQLite
     uri = defaults["uri"]
     if uri.startswith("sqlite:///"):
         db_path = Path(uri.removeprefix("sqlite:///"))
