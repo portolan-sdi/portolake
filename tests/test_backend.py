@@ -499,6 +499,25 @@ def test_publish_with_removed_and_new_assets(iceberg_backend, tmp_path):
 
 
 @pytest.mark.integration
+def test_get_current_version_returns_relative_hrefs(iceberg_backend, tmp_path):
+    """get_current_version() should return Version with relative hrefs."""
+    asset_file = tmp_path / "data.parquet"
+    asset_file.write_bytes(b"test")
+
+    iceberg_backend.publish(
+        collection="boundaries",
+        assets={"item1/data.parquet": str(asset_file)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="v1",
+    )
+
+    version = iceberg_backend.get_current_version("boundaries")
+    assert version.assets["item1/data.parquet"].href == "boundaries/item1/data.parquet"
+    assert not version.assets["item1/data.parquet"].href.startswith("/")
+
+
+@pytest.mark.integration
 def test_publish_stores_relative_hrefs(iceberg_backend, tmp_path):
     """Published version assets should have catalog-root-relative hrefs."""
     asset_file = tmp_path / "data.parquet"
