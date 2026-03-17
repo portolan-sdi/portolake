@@ -131,7 +131,7 @@ class IcebergBackend:
         next_ver = compute_next_version(current_version, breaking)
 
         # Build new assets from input paths
-        new_asset_objects, changes = build_assets(assets)
+        new_asset_objects, changes = build_assets(assets, collection=collection)
 
         # Merge with previous snapshot's assets if we have history
         merged_assets = {}

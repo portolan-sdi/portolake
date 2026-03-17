@@ -499,6 +499,53 @@ def test_publish_with_removed_and_new_assets(iceberg_backend, tmp_path):
 
 
 @pytest.mark.integration
+def test_publish_stores_relative_hrefs(iceberg_backend, tmp_path):
+    """Published version assets should have catalog-root-relative hrefs."""
+    asset_file = tmp_path / "data.parquet"
+    asset_file.write_bytes(b"test content")
+
+    version = iceberg_backend.publish(
+        collection="boundaries",
+        assets={"item1/data.parquet": str(asset_file)},
+        schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "h"},
+        breaking=False,
+        message="test relative hrefs",
+    )
+    asset = version.assets["item1/data.parquet"]
+    assert asset.href == "boundaries/item1/data.parquet"
+    # Must NOT contain absolute paths
+    assert not asset.href.startswith("/")
+
+
+@pytest.mark.integration
+def test_publish_relative_hrefs_survive_merge(iceberg_backend, tmp_path):
+    """Relative hrefs should be preserved when merging with previous snapshot."""
+    f1 = tmp_path / "a.parquet"
+    f1.write_bytes(b"aaa")
+    f2 = tmp_path / "b.parquet"
+    f2.write_bytes(b"bbb")
+
+    iceberg_backend.publish(
+        collection="boundaries",
+        assets={"a.parquet": str(f1)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="v1",
+    )
+
+    v2 = iceberg_backend.publish(
+        collection="boundaries",
+        assets={"b.parquet": str(f2)},
+        schema={"columns": [], "types": {}, "hash": "h"},
+        breaking=False,
+        message="v2 adds b",
+    )
+    # Both assets should have relative hrefs
+    assert v2.assets["a.parquet"].href == "boundaries/a.parquet"
+    assert v2.assets["b.parquet"].href == "boundaries/b.parquet"
+
+
+@pytest.mark.integration
 def test_publish_removed_nonexistent_asset_is_noop(iceberg_backend, tmp_path):
     """Removing an asset that doesn't exist should not raise."""
     f1 = tmp_path / "data.parquet"

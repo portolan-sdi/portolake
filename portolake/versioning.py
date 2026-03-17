@@ -129,8 +129,13 @@ def snapshot_to_version(snapshot: Snapshot) -> Version:
     )
 
 
-def build_assets(assets_input: dict[str, str]) -> tuple[dict[str, Asset], list[str]]:
+def build_assets(
+    assets_input: dict[str, str], collection: str
+) -> tuple[dict[str, Asset], list[str]]:
     """Build Asset objects from {name: path} mapping.
+
+    Produces catalog-root-relative hrefs as ``{collection}/{name}``,
+    matching the convention used by JsonFileBackend.
 
     For local files, computes SHA-256 checksum and file size.
     For remote paths (non-existent locally), uses empty checksum and zero size.
@@ -151,7 +156,7 @@ def build_assets(assets_input: dict[str, str]) -> tuple[dict[str, Asset], list[s
         asset_objects[name] = Asset(
             sha256=sha256,
             size_bytes=size_bytes,
-            href=path_str,
+            href=f"{collection}/{name}",
         )
         changes.append(name)
     return asset_objects, changes

@@ -168,26 +168,37 @@ def test_snapshot_to_version_without_schema():
 
 
 @pytest.mark.unit
-def test_build_assets_creates_asset_objects(tmp_path):
-    """build_assets should create Asset objects and track changes."""
-    # Create a real file for checksum computation
+def test_build_assets_creates_asset_objects_with_relative_hrefs(tmp_path):
+    """build_assets should create Asset objects with collection-relative hrefs."""
     test_file = tmp_path / "data.parquet"
     test_file.write_bytes(b"fake parquet content")
 
-    assets, changes = build_assets({"data.parquet": str(test_file)})
+    assets, changes = build_assets({"data.parquet": str(test_file)}, collection="my-collection")
     assert "data.parquet" in assets
     assert assets["data.parquet"].size_bytes == 20
     assert assets["data.parquet"].sha256 != ""
-    assert assets["data.parquet"].href == str(test_file)
+    assert assets["data.parquet"].href == "my-collection/data.parquet"
     assert changes == ["data.parquet"]
 
 
 @pytest.mark.unit
-def test_build_assets_remote_asset():
-    """build_assets should handle remote (non-local) assets."""
-    assets, changes = build_assets({"remote.parquet": "s3://bucket/remote.parquet"})
+def test_build_assets_remote_asset_with_relative_hrefs():
+    """build_assets should produce relative hrefs even for remote assets."""
+    assets, changes = build_assets(
+        {"remote.parquet": "s3://bucket/remote.parquet"}, collection="boundaries"
+    )
     assert "remote.parquet" in assets
     assert assets["remote.parquet"].sha256 == ""
     assert assets["remote.parquet"].size_bytes == 0
-    assert assets["remote.parquet"].href == "s3://bucket/remote.parquet"
+    assert assets["remote.parquet"].href == "boundaries/remote.parquet"
     assert changes == ["remote.parquet"]
+
+
+@pytest.mark.unit
+def test_build_assets_nested_asset_key(tmp_path):
+    """build_assets with item_id/filename key should produce correct href."""
+    test_file = tmp_path / "data.parquet"
+    test_file.write_bytes(b"content")
+
+    assets, changes = build_assets({"item1/data.parquet": str(test_file)}, collection="boundaries")
+    assert assets["item1/data.parquet"].href == "boundaries/item1/data.parquet"
