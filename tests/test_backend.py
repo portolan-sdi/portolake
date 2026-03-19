@@ -1,7 +1,19 @@
 """Tests for IcebergBackend implementation."""
 
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from portolan_cli.backends.protocol import VersioningBackend
+
+
+def _write_parquet(path, rows=None):
+    """Write a simple Parquet file for testing. Returns the path."""
+    if rows is None:
+        rows = {"id": [1], "val": ["x"]}
+    table = pa.table(rows)
+    pq.write_table(table, path)
+    return path
+
 
 # --- Constructor + Protocol ---
 
@@ -41,12 +53,11 @@ def test_get_current_version_raises_when_no_table(iceberg_backend):
 @pytest.mark.integration
 def test_publish_creates_first_version_1_0_0(iceberg_backend, tmp_path):
     """First published version should always be 1.0.0."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"fake data")
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     version = iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "abc123"},
         breaking=False,
         message="Initial version",
@@ -59,21 +70,20 @@ def test_publish_creates_first_version_1_0_0(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_publish_increments_minor_version(iceberg_backend, tmp_path):
     """Non-breaking change should increment minor version."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"v1 data")
+    asset = _write_parquet(tmp_path / "data.parquet", {"id": [1], "val": ["v1"]})
 
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "h1"},
         breaking=False,
         message="v1",
     )
 
-    asset_file.write_bytes(b"v2 data")
+    _write_parquet(asset, {"id": [2], "val": ["v2"]})
     v2 = iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "h1"},
         breaking=False,
         message="v2",
@@ -84,21 +94,20 @@ def test_publish_increments_minor_version(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_publish_increments_major_on_breaking(iceberg_backend, tmp_path):
     """Breaking change should increment major version."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"v1 data")
+    asset = _write_parquet(tmp_path / "data.parquet", {"id": [1], "val": ["v1"]})
 
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "h1"},
         breaking=False,
         message="v1",
     )
 
-    asset_file.write_bytes(b"v2 breaking data")
+    _write_parquet(asset, {"id": [2], "val": ["v2"]})
     v2 = iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={
             "columns": ["id", "geom"],
             "types": {"id": "int64", "geom": "geometry"},
@@ -114,12 +123,11 @@ def test_publish_increments_major_on_breaking(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_publish_stores_assets_and_schema(iceberg_backend, tmp_path):
     """Published version should contain correct assets and schema."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"test content")
+    asset = _write_parquet(tmp_path / "data.parquet", {"id": [1, 2], "name": ["a", "b"]})
 
     version = iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={
             "columns": ["id", "name"],
             "types": {"id": "int64", "name": "string"},
@@ -129,7 +137,7 @@ def test_publish_stores_assets_and_schema(iceberg_backend, tmp_path):
         message="With schema",
     )
     assert "data.parquet" in version.assets
-    assert version.assets["data.parquet"].size_bytes == 12
+    assert version.assets["data.parquet"].size_bytes > 0
     assert version.assets["data.parquet"].sha256 != ""
     assert version.schema is not None
     assert version.schema.type == "schema_hash"
@@ -138,10 +146,8 @@ def test_publish_stores_assets_and_schema(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_publish_tracks_changes(iceberg_backend, tmp_path):
     """Published version should list changed assets."""
-    f1 = tmp_path / "a.parquet"
-    f1.write_bytes(b"aaa")
-    f2 = tmp_path / "b.parquet"
-    f2.write_bytes(b"bbb")
+    f1 = _write_parquet(tmp_path / "a.parquet", {"id": [1], "x": ["a"]})
+    f2 = _write_parquet(tmp_path / "b.parquet", {"id": [2], "x": ["b"]})
 
     version = iceberg_backend.publish(
         collection="test-collection",
@@ -159,12 +165,11 @@ def test_publish_tracks_changes(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_get_current_version_after_publish(iceberg_backend, tmp_path):
     """get_current_version should return the latest published version."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"data")
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v1",
@@ -176,21 +181,20 @@ def test_get_current_version_after_publish(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_list_versions_ordered_oldest_first(iceberg_backend, tmp_path):
     """list_versions should return versions in chronological order."""
-    asset_file = tmp_path / "data.parquet"
+    asset = _write_parquet(tmp_path / "data.parquet")
 
-    asset_file.write_bytes(b"v1")
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v1",
     )
 
-    asset_file.write_bytes(b"v2")
+    _write_parquet(asset, {"id": [2], "val": ["v2"]})
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v2",
@@ -209,31 +213,28 @@ def test_list_versions_ordered_oldest_first(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_rollback_creates_new_version(iceberg_backend, tmp_path):
     """Rollback should create a NEW version, not rewrite history."""
-    asset_file = tmp_path / "data.parquet"
+    asset = _write_parquet(tmp_path / "data.parquet")
 
-    asset_file.write_bytes(b"v1")
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v1",
     )
 
-    asset_file.write_bytes(b"v2")
+    _write_parquet(asset, {"id": [2], "val": ["v2"]})
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v2",
     )
 
     rolled = iceberg_backend.rollback("test-collection", "1.0.0")
-    # Should be a new version (1.2.0), not overwriting
     assert rolled.version == "1.2.0"
 
-    # History should have 3 versions
     versions = iceberg_backend.list_versions("test-collection")
     assert len(versions) == 3
 
@@ -241,22 +242,21 @@ def test_rollback_creates_new_version(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_rollback_preserves_target_assets(iceberg_backend, tmp_path):
     """Rollback should restore the target version's assets."""
-    asset_file = tmp_path / "data.parquet"
+    asset = _write_parquet(tmp_path / "data.parquet", {"id": [1], "val": ["v1"]})
 
-    asset_file.write_bytes(b"v1 content")
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v1",
     )
     v1 = iceberg_backend.get_current_version("test-collection")
 
-    asset_file.write_bytes(b"v2 different content")
+    _write_parquet(asset, {"id": [2], "val": ["v2"]})
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v2",
@@ -269,12 +269,11 @@ def test_rollback_preserves_target_assets(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_rollback_nonexistent_version_raises_valueerror(iceberg_backend, tmp_path):
     """Rollback to nonexistent version should raise ValueError."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"data")
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v1",
@@ -290,22 +289,21 @@ def test_rollback_nonexistent_version_raises_valueerror(iceberg_backend, tmp_pat
 @pytest.mark.integration
 def test_prune_dry_run_returns_prunable(iceberg_backend, tmp_path):
     """Prune with dry_run=True should return prunable versions without deleting."""
-    asset_file = tmp_path / "data.parquet"
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     for i in range(4):
-        asset_file.write_bytes(f"v{i}".encode())
+        _write_parquet(asset, {"id": [i], "val": [f"v{i}"]})
         iceberg_backend.publish(
             collection="test-collection",
-            assets={"data.parquet": str(asset_file)},
+            assets={"data.parquet": str(asset)},
             schema={"columns": [], "types": {}, "hash": "h"},
             breaking=False,
             message=f"v{i}",
         )
 
     prunable = iceberg_backend.prune("test-collection", keep=2, dry_run=True)
-    assert len(prunable) == 2  # 4 versions - keep 2 = 2 prunable
+    assert len(prunable) == 2
 
-    # Versions should still be there
     versions = iceberg_backend.list_versions("test-collection")
     assert len(versions) == 4
 
@@ -313,13 +311,13 @@ def test_prune_dry_run_returns_prunable(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_prune_removes_old_versions(iceberg_backend, tmp_path):
     """Prune should remove old versions."""
-    asset_file = tmp_path / "data.parquet"
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     for i in range(4):
-        asset_file.write_bytes(f"v{i}".encode())
+        _write_parquet(asset, {"id": [i], "val": [f"v{i}"]})
         iceberg_backend.publish(
             collection="test-collection",
-            assets={"data.parquet": str(asset_file)},
+            assets={"data.parquet": str(asset)},
             schema={"columns": [], "types": {}, "hash": "h"},
             breaking=False,
             message=f"v{i}",
@@ -335,13 +333,13 @@ def test_prune_removes_old_versions(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_prune_keeps_n_most_recent(iceberg_backend, tmp_path):
     """Prune should keep the N most recent versions."""
-    asset_file = tmp_path / "data.parquet"
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     for i in range(5):
-        asset_file.write_bytes(f"v{i}".encode())
+        _write_parquet(asset, {"id": [i], "val": [f"v{i}"]})
         iceberg_backend.publish(
             collection="test-collection",
-            assets={"data.parquet": str(asset_file)},
+            assets={"data.parquet": str(asset)},
             schema={"columns": [], "types": {}, "hash": "h"},
             breaking=False,
             message=f"v{i}",
@@ -351,7 +349,6 @@ def test_prune_keeps_n_most_recent(iceberg_backend, tmp_path):
 
     remaining = iceberg_backend.list_versions("test-collection")
     assert len(remaining) == 3
-    # The kept versions should be the most recent ones
     assert remaining[-1].version == "1.4.0"
     assert remaining[-2].version == "1.3.0"
     assert remaining[-3].version == "1.2.0"
@@ -363,12 +360,11 @@ def test_prune_keeps_n_most_recent(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_check_drift_returns_report(iceberg_backend, tmp_path):
     """check_drift should return a DriftReport."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"data")
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     iceberg_backend.publish(
         collection="test-collection",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v1",
@@ -423,12 +419,10 @@ def test_backend_with_catalog_root_creates_files_in_correct_location(tmp_path):
     backend = IcebergBackend(catalog_root=tmp_path)
     assert (tmp_path / ".portolan" / "iceberg.db").exists()
 
-    # Verify it works end-to-end
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"test data")
+    asset = _write_parquet(tmp_path / "data.parquet")
     version = backend.publish(
         collection="test-col",
-        assets={"data.parquet": str(asset_file)},
+        assets={"data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="test",
@@ -442,12 +436,9 @@ def test_backend_with_catalog_root_creates_files_in_correct_location(tmp_path):
 @pytest.mark.integration
 def test_publish_with_removed_excludes_assets(iceberg_backend, tmp_path):
     """publish(removed={"asset"}) should exclude that asset from the new version."""
-    f1 = tmp_path / "a.parquet"
-    f1.write_bytes(b"aaa")
-    f2 = tmp_path / "b.parquet"
-    f2.write_bytes(b"bbb")
+    f1 = _write_parquet(tmp_path / "a.parquet", {"id": [1], "x": ["a"]})
+    f2 = _write_parquet(tmp_path / "b.parquet", {"id": [2], "x": ["b"]})
 
-    # Publish v1 with two assets
     iceberg_backend.publish(
         collection="test-collection",
         assets={"a.parquet": str(f1), "b.parquet": str(f2)},
@@ -456,7 +447,7 @@ def test_publish_with_removed_excludes_assets(iceberg_backend, tmp_path):
         message="v1 with two assets",
     )
 
-    # Publish v2 removing one asset
+    # Publish v2 removing one asset (no new data assets)
     v2 = iceberg_backend.publish(
         collection="test-collection",
         assets={},
@@ -472,8 +463,7 @@ def test_publish_with_removed_excludes_assets(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_publish_with_removed_and_new_assets(iceberg_backend, tmp_path):
     """publish can add new assets and remove old ones in the same call."""
-    f1 = tmp_path / "old.parquet"
-    f1.write_bytes(b"old")
+    f1 = _write_parquet(tmp_path / "old.parquet", {"id": [1], "x": ["old"]})
 
     iceberg_backend.publish(
         collection="test-collection",
@@ -483,8 +473,7 @@ def test_publish_with_removed_and_new_assets(iceberg_backend, tmp_path):
         message="v1",
     )
 
-    f2 = tmp_path / "new.parquet"
-    f2.write_bytes(b"new")
+    f2 = _write_parquet(tmp_path / "new.parquet", {"id": [2], "x": ["new"]})
 
     v2 = iceberg_backend.publish(
         collection="test-collection",
@@ -501,12 +490,11 @@ def test_publish_with_removed_and_new_assets(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_get_current_version_returns_relative_hrefs(iceberg_backend, tmp_path):
     """get_current_version() should return Version with relative hrefs."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"test")
+    asset = _write_parquet(tmp_path / "data.parquet")
 
     iceberg_backend.publish(
         collection="boundaries",
-        assets={"item1/data.parquet": str(asset_file)},
+        assets={"item1/data.parquet": str(asset)},
         schema={"columns": [], "types": {}, "hash": "h"},
         breaking=False,
         message="v1",
@@ -520,29 +508,25 @@ def test_get_current_version_returns_relative_hrefs(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_publish_stores_relative_hrefs(iceberg_backend, tmp_path):
     """Published version assets should have catalog-root-relative hrefs."""
-    asset_file = tmp_path / "data.parquet"
-    asset_file.write_bytes(b"test content")
+    asset = _write_parquet(tmp_path / "data.parquet", {"id": [1], "name": ["test"]})
 
     version = iceberg_backend.publish(
         collection="boundaries",
-        assets={"item1/data.parquet": str(asset_file)},
+        assets={"item1/data.parquet": str(asset)},
         schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "h"},
         breaking=False,
         message="test relative hrefs",
     )
-    asset = version.assets["item1/data.parquet"]
-    assert asset.href == "boundaries/item1/data.parquet"
-    # Must NOT contain absolute paths
-    assert not asset.href.startswith("/")
+    asset_obj = version.assets["item1/data.parquet"]
+    assert asset_obj.href == "boundaries/item1/data.parquet"
+    assert not asset_obj.href.startswith("/")
 
 
 @pytest.mark.integration
 def test_publish_relative_hrefs_survive_merge(iceberg_backend, tmp_path):
     """Relative hrefs should be preserved when merging with previous snapshot."""
-    f1 = tmp_path / "a.parquet"
-    f1.write_bytes(b"aaa")
-    f2 = tmp_path / "b.parquet"
-    f2.write_bytes(b"bbb")
+    f1 = _write_parquet(tmp_path / "a.parquet", {"id": [1], "x": ["a"]})
+    f2 = _write_parquet(tmp_path / "b.parquet", {"id": [2], "x": ["b"]})
 
     iceberg_backend.publish(
         collection="boundaries",
@@ -559,7 +543,6 @@ def test_publish_relative_hrefs_survive_merge(iceberg_backend, tmp_path):
         breaking=False,
         message="v2 adds b",
     )
-    # Both assets should have relative hrefs
     assert v2.assets["a.parquet"].href == "boundaries/a.parquet"
     assert v2.assets["b.parquet"].href == "boundaries/b.parquet"
 
@@ -567,8 +550,7 @@ def test_publish_relative_hrefs_survive_merge(iceberg_backend, tmp_path):
 @pytest.mark.integration
 def test_publish_removed_nonexistent_asset_is_noop(iceberg_backend, tmp_path):
     """Removing an asset that doesn't exist should not raise."""
-    f1 = tmp_path / "data.parquet"
-    f1.write_bytes(b"data")
+    f1 = _write_parquet(tmp_path / "data.parquet")
 
     iceberg_backend.publish(
         collection="test-collection",

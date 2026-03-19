@@ -1,7 +1,7 @@
 """IcebergBackend: enterprise versioning backend using Apache Iceberg.
 
-Implements the VersioningBackend protocol from portolan-cli, storing version
-metadata in Iceberg snapshot summary properties.
+Implements the VersioningBackend protocol from portolan-cli, storing actual
+data in Iceberg tables and version metadata in snapshot summary properties.
 """
 
 from __future__ import annotations
@@ -10,13 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pyarrow as pa
+import pyarrow.parquet as pq
 from portolan_cli.backends.protocol import DriftReport, SchemaFingerprint
 from portolan_cli.versions import Asset, SchemaInfo, Version
 from pyiceberg.exceptions import NoSuchTableError
-from pyiceberg.schema import Schema as IcebergSchema
 from pyiceberg.table import Transaction
 from pyiceberg.table.update.snapshot import ExpireSnapshots
-from pyiceberg.types import LongType, NestedField, StringType
 
 from portolake.config import create_catalog
 from portolake.versioning import (
@@ -30,14 +29,6 @@ if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.table import Table
 
-# Minimal Iceberg schema for the asset metadata table
-ASSET_SCHEMA = IcebergSchema(
-    NestedField(1, "asset_name", StringType(), required=True),
-    NestedField(2, "href", StringType(), required=True),
-    NestedField(3, "sha256", StringType(), required=True),
-    NestedField(4, "size_bytes", LongType(), required=True),
-)
-
 NAMESPACE = "portolake"
 
 
@@ -47,10 +38,8 @@ class IcebergBackend:
     Implements the VersioningBackend protocol from portolan-cli.
     Discovered via the 'portolan.backends' entry point.
 
-    Configuration via PyIceberg env vars:
-        PYICEBERG_CATALOG__PORTOLAKE__TYPE=sql (default)
-        PYICEBERG_CATALOG__PORTOLAKE__URI=sqlite:///...
-        PYICEBERG_CATALOG__PORTOLAKE__WAREHOUSE=file:///...
+    Data is stored natively in Iceberg tables (copy-on-write). Version
+    metadata is stored in snapshot summary properties.
     """
 
     def __init__(self, catalog: Catalog | None = None, catalog_root: Path | None = None) -> None:
@@ -64,7 +53,6 @@ class IcebergBackend:
         """Validate and sanitize collection name."""
         if not collection or not collection.strip():
             raise ValueError("Collection name cannot be empty")
-        # Reject paths containing traversal components
         if ".." in collection or "/" in collection or "\\" in collection:
             raise ValueError(f"Invalid collection name: {collection!r}")
         safe = Path(collection).name
@@ -75,12 +63,17 @@ class IcebergBackend:
     def _table_id(self, collection: str) -> str:
         return f"{NAMESPACE}.{self._validate_collection(collection)}"
 
-    def _load_or_create_table(self, table_id: str) -> Table:
-        """Load an existing table or create a new one."""
+    def _load_or_create_table(self, table_id: str, arrow_schema: pa.Schema) -> Table:
+        """Load an existing table or create one with the given schema."""
         try:
+            table = self._catalog.load_table(table_id)
+            # Schema evolution: add new columns if needed
+            with table.update_schema() as update:
+                update.union_by_name(table.schema().as_arrow())
+                update.union_by_name(arrow_schema)
             return self._catalog.load_table(table_id)
         except NoSuchTableError:
-            return self._catalog.create_table(table_id, schema=ASSET_SCHEMA)
+            return self._catalog.create_table(table_id, schema=arrow_schema)
 
     def _get_current_version_str(self, table: Table) -> str | None:
         """Extract portolake.version from the current snapshot, if any."""
@@ -123,30 +116,21 @@ class IcebergBackend:
         message: str,
         removed: set[str] | None = None,
     ) -> Version:
-        """Publish a new version of a collection."""
-        table_id = self._table_id(collection)
-        table = self._load_or_create_table(table_id)
+        """Publish a new version of a collection.
 
-        current_version = self._get_current_version_str(table)
+        Reads actual Parquet data from asset files and writes it into the
+        Iceberg table. Version metadata is stored in snapshot properties.
+        """
+        table_id = self._table_id(collection)
+
+        current_version = self._get_current_version_str_safe(table_id)
         next_ver = compute_next_version(current_version, breaking)
 
-        # Build new assets from input paths
+        # Build asset metadata (sha256, size, href)
         new_asset_objects, changes = build_assets(assets, collection=collection)
 
         # Merge with previous snapshot's assets if we have history
-        merged_assets = {}
-        snap = table.current_snapshot()
-        if snap is not None and snap.summary is not None:
-            prev_version = snapshot_to_version(snap)
-            merged_assets.update(prev_version.assets)
-
-        # Apply new assets (overwrite existing)
-        merged_assets.update(new_asset_objects)
-
-        # Remove requested assets
-        if removed:
-            for key in removed:
-                merged_assets.pop(key, None)
+        merged_assets = self._get_merged_assets(table_id, new_asset_objects, removed)
 
         schema_info = SchemaInfo(
             type=schema.get("hash", "unknown"),
@@ -160,17 +144,62 @@ class IcebergBackend:
             next_ver, breaking, message, merged_assets, schema_info, changes
         )
 
-        arrow_table = _build_arrow_table(merged_assets)
-        table.append(arrow_table, snapshot_properties=props)
+        # Read actual Parquet data from asset files
+        arrow_data = _read_parquet_assets(assets)
+
+        if arrow_data is not None:
+            table = self._load_or_create_table(table_id, arrow_data.schema)
+            table.append(arrow_data, snapshot_properties=props)
+        else:
+            # No parquet data to ingest (e.g., only removals)
+            table = self._load_or_create_table_from_existing(table_id)
+            table.append(_empty_table(table.schema().as_arrow()), snapshot_properties=props)
 
         # Reload to get the committed snapshot
         table = self._catalog.load_table(table_id)
         return snapshot_to_version(table.current_snapshot())
 
+    def _get_current_version_str_safe(self, table_id: str) -> str | None:
+        """Get current version string, returning None if table doesn't exist."""
+        try:
+            table = self._catalog.load_table(table_id)
+            return self._get_current_version_str(table)
+        except NoSuchTableError:
+            return None
+
+    def _get_merged_assets(
+        self,
+        table_id: str,
+        new_assets: dict[str, Asset],
+        removed: set[str] | None,
+    ) -> dict[str, Asset]:
+        """Merge new assets with previous version's assets."""
+        merged: dict[str, Asset] = {}
+        try:
+            table = self._catalog.load_table(table_id)
+            snap = table.current_snapshot()
+            if snap is not None and snap.summary is not None:
+                prev_version = snapshot_to_version(snap)
+                merged.update(prev_version.assets)
+        except NoSuchTableError:
+            pass
+
+        merged.update(new_assets)
+
+        if removed:
+            for key in removed:
+                merged.pop(key, None)
+
+        return merged
+
+    def _load_or_create_table_from_existing(self, table_id: str) -> Table:
+        """Load an existing table (for operations that don't have new data)."""
+        return self._catalog.load_table(table_id)
+
     def rollback(self, collection: str, target_version: str) -> Version:
         """Rollback to a previous version.
 
-        Creates a NEW version with the target version's assets,
+        Creates a NEW version with the target version's data,
         preserving full history.
         """
         table_id = self._table_id(collection)
@@ -192,10 +221,8 @@ class IcebergBackend:
         if target_snap is None:
             raise ValueError(f"Version {target_version} not found in collection: {collection}")
 
-        # Extract the target version's data
         target_ver = snapshot_to_version(target_snap)
 
-        # Compute next version (non-breaking rollback)
         current_version = self._get_current_version_str(table)
         next_ver = compute_next_version(current_version, breaking=False)
 
@@ -210,9 +237,12 @@ class IcebergBackend:
             changes=list(target_ver.assets.keys()),
         )
 
-        # Write new snapshot with the target's asset data
-        arrow_table = _build_arrow_table(target_ver.assets)
-        table.append(arrow_table, snapshot_properties=props)
+        # Read data from the target snapshot and write as new snapshot
+        target_data = table.scan(snapshot_id=target_snap.snapshot_id).to_arrow()
+        if len(target_data) > 0:
+            table.append(target_data, snapshot_properties=props)
+        else:
+            table.append(_empty_table(table.schema().as_arrow()), snapshot_properties=props)
 
         table = self._catalog.load_table(table_id)
         return snapshot_to_version(table.current_snapshot())
@@ -225,7 +255,6 @@ class IcebergBackend:
         except NoSuchTableError:
             return []
 
-        # Get all portolake versions sorted by timestamp
         versioned_snapshots = []
         for snap in table.snapshots():
             if snap.summary and "portolake.version" in snap.summary.additional_properties:
@@ -235,7 +264,6 @@ class IcebergBackend:
         if len(versioned_snapshots) <= keep:
             return []
 
-        # Identify snapshots to prune (oldest ones beyond keep)
         to_prune = versioned_snapshots[: len(versioned_snapshots) - keep]
         pruned_versions = [snapshot_to_version(s) for s in to_prune]
 
@@ -247,10 +275,7 @@ class IcebergBackend:
         return pruned_versions
 
     def check_drift(self, collection: str) -> DriftReport:
-        """Check for drift between local and remote state.
-
-        Currently a stub (same as JsonFileBackend).
-        """
+        """Check for drift between local and remote state."""
         table_id = self._table_id(collection)
         current = None
         try:
@@ -267,28 +292,28 @@ class IcebergBackend:
         )
 
 
-def _build_arrow_table(assets: dict[str, Asset]) -> pa.Table:
-    """Build a PyArrow table of asset metadata for Iceberg storage."""
-    names = list(assets.keys())
-    hrefs = [a.href for a in assets.values()]
-    sha256s = [a.sha256 for a in assets.values()]
-    sizes = [a.size_bytes for a in assets.values()]
+def _read_parquet_assets(assets: dict[str, str]) -> pa.Table | None:
+    """Read Parquet data from asset file paths and concatenate."""
+    tables = []
+    for path_str in assets.values():
+        path = Path(path_str)
+        if path.exists() and path.suffix == ".parquet":
+            try:
+                tables.append(pq.read_table(path))
+            except Exception:
+                pass  # Not a valid parquet file, skip data ingestion
 
-    # Iceberg schema has required (non-nullable) fields, so Arrow arrays must match
-    schema = pa.schema(
-        [
-            pa.field("asset_name", pa.string(), nullable=False),
-            pa.field("href", pa.string(), nullable=False),
-            pa.field("sha256", pa.string(), nullable=False),
-            pa.field("size_bytes", pa.int64(), nullable=False),
-        ]
-    )
+    if not tables:
+        return None
+
+    if len(tables) == 1:
+        return tables[0]
+
+    return pa.concat_tables(tables, promote_options="default")
+
+
+def _empty_table(arrow_schema: pa.Schema) -> pa.Table:
+    """Create an empty PyArrow table with the given schema."""
     return pa.table(
-        {
-            "asset_name": names,
-            "href": hrefs,
-            "sha256": sha256s,
-            "size_bytes": sizes,
-        },
-        schema=schema,
+        {field.name: pa.array([], type=field.type) for field in arrow_schema}, schema=arrow_schema
     )
