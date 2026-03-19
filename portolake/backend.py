@@ -18,6 +18,7 @@ from pyiceberg.table import Transaction
 from pyiceberg.table.update.snapshot import ExpireSnapshots
 
 from portolake.config import create_catalog
+from portolake.spatial import add_spatial_columns
 from portolake.versioning import (
     build_assets,
     compute_next_version,
@@ -293,7 +294,7 @@ class IcebergBackend:
 
 
 def _read_parquet_assets(assets: dict[str, str]) -> pa.Table | None:
-    """Read Parquet data from asset file paths and concatenate."""
+    """Read Parquet data from asset file paths, concatenate, and add spatial columns."""
     tables = []
     for path_str in assets.values():
         path = Path(path_str)
@@ -307,9 +308,12 @@ def _read_parquet_assets(assets: dict[str, str]) -> pa.Table | None:
         return None
 
     if len(tables) == 1:
-        return tables[0]
+        result = tables[0]
+    else:
+        result = pa.concat_tables(tables, promote_options="default")
 
-    return pa.concat_tables(tables, promote_options="default")
+    # Add spatial columns (geohash + bbox) if geometry is present
+    return add_spatial_columns(result)
 
 
 def _empty_table(arrow_schema: pa.Schema) -> pa.Table:
