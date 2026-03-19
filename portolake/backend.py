@@ -275,6 +275,18 @@ class IcebergBackend:
 
         return pruned_versions
 
+    def get_stac_metadata(self, collection: str) -> dict:
+        """Generate combined STAC metadata for a collection.
+
+        Returns a dict with table:* (Layer 1) and iceberg:* (Layer 2) fields.
+        NOT part of the VersioningBackend protocol — Iceberg-specific extension.
+        """
+        from portolake.stac_generator import generate_collection_metadata
+
+        table_id = self._table_id(collection)
+        table = self._catalog.load_table(table_id)
+        return generate_collection_metadata(table)
+
     def check_drift(self, collection: str) -> DriftReport:
         """Check for drift between local and remote state."""
         table_id = self._table_id(collection)
