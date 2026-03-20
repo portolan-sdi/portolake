@@ -148,6 +148,70 @@ def test_publish_no_geometry_skips_spatial_columns(iceberg_backend, iceberg_cata
 
 
 @pytest.mark.integration
+def test_publish_creates_partitioned_table(iceberg_catalog, tmp_path):
+    """Datasets >= 100K rows should create an Iceberg table partitioned by geohash."""
+    import random
+
+    from portolake.backend import IcebergBackend
+
+    backend = IcebergBackend(catalog=iceberg_catalog)
+
+    # Generate 100K+ points spread across Spain to trigger partitioning (precision 3)
+    random.seed(42)
+    n = 100_001
+    points = [(random.uniform(-9.0, 3.0), random.uniform(36.0, 43.5)) for _ in range(n)]
+    wkb_values = [_make_wkb_point(x, y) for x, y in points]
+
+    table_data = pa.table(
+        {
+            "id": pa.array(range(n), type=pa.int64()),
+            "geometry": pa.array(wkb_values, type=pa.binary()),
+        }
+    )
+    path = tmp_path / "large_geo.parquet"
+    pq.write_table(table_data, path)
+
+    backend.publish(
+        collection="large_geo",
+        assets={"large_geo.parquet": str(path)},
+        schema={"columns": ["id", "geometry"], "types": {}, "hash": "h1"},
+        breaking=False,
+        message="large geo dataset",
+    )
+
+    table = iceberg_catalog.load_table("portolake.large_geo")
+
+    # Should have partition spec on geohash_3
+    partition_fields = table.spec().fields
+    assert len(partition_fields) == 1, f"Expected 1 partition field, got {partition_fields}"
+    assert partition_fields[0].name == "geohash_3"
+
+    # Verify multiple data files were created (one per partition)
+    data_files = list(table.scan().plan_files())
+    assert len(data_files) > 1, f"Expected multiple data files (partitions), got {len(data_files)}"
+
+
+@pytest.mark.integration
+def test_publish_no_partition_for_non_geo(iceberg_backend, iceberg_catalog, tmp_path):
+    """Non-geometry data should never have a partition spec, regardless of size."""
+    table_data = pa.table({"id": pa.array(range(1000), type=pa.int64())})
+    path = tmp_path / "plain.parquet"
+    pq.write_table(table_data, path)
+
+    iceberg_backend.publish(
+        collection="plain_large",
+        assets={"plain.parquet": str(path)},
+        schema={"columns": ["id"], "types": {}, "hash": "h1"},
+        breaking=False,
+        message="plain data",
+    )
+
+    table = iceberg_catalog.load_table("portolake.plain_large")
+    partition_fields = table.spec().fields
+    assert len(partition_fields) == 0
+
+
+@pytest.mark.integration
 def test_publish_geohash_values_queryable(iceberg_backend, iceberg_catalog, tmp_path):
     """Should be able to filter by geohash value after publish."""
     geo_file = _write_geo_parquet(

@@ -18,7 +18,7 @@ from pyiceberg.table import Transaction
 from pyiceberg.table.update.snapshot import ExpireSnapshots
 
 from portolake.config import create_catalog
-from portolake.spatial import add_spatial_columns
+from portolake.spatial import add_spatial_columns, detect_geohash_precision
 from portolake.versioning import (
     build_assets,
     compute_next_version,
@@ -64,8 +64,14 @@ class IcebergBackend:
     def _table_id(self, collection: str) -> str:
         return f"{NAMESPACE}.{self._validate_collection(collection)}"
 
-    def _load_or_create_table(self, table_id: str, arrow_schema: pa.Schema) -> Table:
-        """Load an existing table or create one with the given schema."""
+    def _load_or_create_table(
+        self, table_id: str, arrow_schema: pa.Schema, row_count: int = 0
+    ) -> Table:
+        """Load an existing table or create one with the given schema.
+
+        For new tables with geometry, sets up Iceberg partition spec on the
+        geohash column if the dataset is large enough (>=100K rows).
+        """
         try:
             table = self._catalog.load_table(table_id)
             # Schema evolution: add new columns if needed
@@ -74,7 +80,24 @@ class IcebergBackend:
                 update.union_by_name(arrow_schema)
             return self._catalog.load_table(table_id)
         except NoSuchTableError:
-            return self._catalog.create_table(table_id, schema=arrow_schema)
+            table = self._catalog.create_table(table_id, schema=arrow_schema)
+            self._apply_partition_spec(table, arrow_schema, row_count)
+            return self._catalog.load_table(table_id)
+
+    @staticmethod
+    def _apply_partition_spec(table: Table, arrow_schema: pa.Schema, row_count: int) -> None:
+        """Add Iceberg partition spec on geohash column if dataset is large enough."""
+        precision = detect_geohash_precision(row_count)
+        if precision is None:
+            return
+
+        geohash_col = f"geohash_{precision}"
+        field_names = [f.name for f in arrow_schema]
+        if geohash_col not in field_names:
+            return
+
+        with table.update_spec() as update:
+            update.add_identity(geohash_col)
 
     def _get_current_version_str(self, table: Table) -> str | None:
         """Extract portolake.version from the current snapshot, if any."""
@@ -149,7 +172,9 @@ class IcebergBackend:
         arrow_data = _read_parquet_assets(assets)
 
         if arrow_data is not None:
-            table = self._load_or_create_table(table_id, arrow_data.schema)
+            table = self._load_or_create_table(
+                table_id, arrow_data.schema, row_count=len(arrow_data)
+            )
             table.append(arrow_data, snapshot_properties=props)
         else:
             # No parquet data to ingest (e.g., only removals)

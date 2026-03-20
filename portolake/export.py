@@ -45,7 +45,5 @@ def _filter_schema(arrow_schema):
     """Remove derived columns from an Arrow schema."""
     import pyarrow as pa
 
-    fields = [
-        f for f in arrow_schema if not any(f.name.startswith(p) for p in _DERIVED_PREFIXES)
-    ]
+    fields = [f for f in arrow_schema if not any(f.name.startswith(p) for p in _DERIVED_PREFIXES)]
     return pa.schema(fields)
