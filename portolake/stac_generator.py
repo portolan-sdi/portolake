@@ -115,6 +115,12 @@ def _get_catalog_type(table: Table) -> str:
     return _CATALOG_TYPE_MAP.get(class_name, catalog.properties.get("type", "unknown"))
 
 
+def _get_catalog_uri(table: Table) -> str | None:
+    """Extract the catalog URI from a table's catalog reference."""
+    catalog = table.catalog
+    return catalog.properties.get("uri")
+
+
 def _get_table_id(table: Table) -> str:
     """Get the fully qualified table identifier (namespace.name)."""
     name_tuple = table.name()
@@ -151,8 +157,25 @@ def generate_collection_metadata(table: Table) -> dict[str, Any]:
     metadata["iceberg:format_version"] = table.format_version
     metadata["iceberg:partition_spec"] = _get_partition_spec(table)
 
+    catalog_uri = _get_catalog_uri(table)
+    if catalog_uri:
+        metadata["iceberg:catalog_uri"] = catalog_uri
+
     snap = table.current_snapshot()
     metadata["iceberg:current_snapshot_id"] = snap.snapshot_id if snap else None
+
+    # Collection-level asset pointing to Iceberg metadata
+    metadata["assets"] = {
+        "data": {
+            "href": table.location(),
+            "type": "application/x-iceberg",
+            "roles": ["data"],
+            "description": (
+                "Apache Iceberg table — use PyIceberg, DuckDB iceberg_scan(), "
+                "or Spark to query"
+            ),
+        }
+    }
 
     # STAC extensions list
     metadata["stac_extensions"] = [STAC_TABLE_EXTENSION, STAC_ICEBERG_EXTENSION]

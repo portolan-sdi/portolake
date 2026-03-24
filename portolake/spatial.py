@@ -2,6 +2,8 @@
 
 Adds geohash columns for Iceberg partition specs and per-row bounding box
 columns for manifest-level min/max statistics.
+
+Uses vectorized shapely 2.0+ operations for performance on large datasets.
 """
 
 from __future__ import annotations
@@ -42,21 +44,19 @@ def _find_geometry_column(table: pa.Table) -> str | None:
 def compute_geohash_column(table: pa.Table, precision: int = 4) -> pa.Table:
     """Add a geohash_{precision} column computed from geometry centroids.
 
-    If the geometry column doesn't exist, returns the table unchanged.
+    Uses vectorized shapely operations for WKB parsing and centroid computation.
     """
     col_name = _find_geometry_column(table)
     if col_name is None:
         return table
 
-    wkb_array = table.column(col_name)
-    geohashes = []
-    for wkb_value in wkb_array:
-        wkb_bytes = wkb_value.as_py()
-        geom = shapely.from_wkb(wkb_bytes)
-        centroid = shapely.centroid(geom)
-        x, y = shapely.get_coordinates(centroid)[0]
-        # pygeohash expects (latitude, longitude)
-        geohashes.append(pgh.encode(y, x, precision=precision))
+    wkb_list = table.column(col_name).to_pylist()
+    geoms = shapely.from_wkb(wkb_list)
+    centroids = shapely.centroid(geoms)
+    coords = shapely.get_coordinates(centroids)
+
+    # pygeohash.encode is per-element (C extension, still fast)
+    geohashes = [pgh.encode(y, x, precision=precision) for x, y in coords]
 
     geohash_col_name = f"geohash_{precision}"
     return table.append_column(geohash_col_name, pa.array(geohashes, type=pa.string()))
@@ -65,28 +65,20 @@ def compute_geohash_column(table: pa.Table, precision: int = 4) -> pa.Table:
 def compute_bbox_columns(table: pa.Table) -> pa.Table:
     """Add per-row bbox columns (xmin, ymin, xmax, ymax) from geometry bounds.
 
-    If the geometry column doesn't exist, returns the table unchanged.
+    Uses vectorized shapely.bounds for the entire array at once.
     """
     col_name = _find_geometry_column(table)
     if col_name is None:
         return table
 
-    wkb_array = table.column(col_name)
-    xmins, ymins, xmaxs, ymaxs = [], [], [], []
+    wkb_list = table.column(col_name).to_pylist()
+    geoms = shapely.from_wkb(wkb_list)
+    bounds = shapely.bounds(geoms)  # (N, 4) array: xmin, ymin, xmax, ymax
 
-    for wkb_value in wkb_array:
-        wkb_bytes = wkb_value.as_py()
-        geom = shapely.from_wkb(wkb_bytes)
-        bounds = shapely.bounds(geom)  # (xmin, ymin, xmax, ymax)
-        xmins.append(bounds[0])
-        ymins.append(bounds[1])
-        xmaxs.append(bounds[2])
-        ymaxs.append(bounds[3])
-
-    table = table.append_column("bbox_xmin", pa.array(xmins, type=pa.float64()))
-    table = table.append_column("bbox_ymin", pa.array(ymins, type=pa.float64()))
-    table = table.append_column("bbox_xmax", pa.array(xmaxs, type=pa.float64()))
-    table = table.append_column("bbox_ymax", pa.array(ymaxs, type=pa.float64()))
+    table = table.append_column("bbox_xmin", pa.array(bounds[:, 0], type=pa.float64()))
+    table = table.append_column("bbox_ymin", pa.array(bounds[:, 1], type=pa.float64()))
+    table = table.append_column("bbox_xmax", pa.array(bounds[:, 2], type=pa.float64()))
+    table = table.append_column("bbox_ymax", pa.array(bounds[:, 3], type=pa.float64()))
 
     return table
 

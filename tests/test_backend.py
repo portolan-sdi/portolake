@@ -412,10 +412,12 @@ def test_directory_traversal_rejected(iceberg_backend):
 
 
 @pytest.mark.integration
-def test_backend_with_catalog_root_creates_files_in_correct_location(tmp_path):
+def test_backend_with_catalog_root_creates_files_in_correct_location(tmp_path, monkeypatch):
     """IcebergBackend(catalog_root=path) should create iceberg.db under path/.portolan/."""
     from portolake.backend import IcebergBackend
 
+    # Isolate from ~/.pyiceberg.yaml (e.g., REST/BigLake config)
+    monkeypatch.setattr("portolake.config._get_external_config", lambda: None)
     backend = IcebergBackend(catalog_root=tmp_path)
     assert (tmp_path / ".portolan" / "iceberg.db").exists()
 
