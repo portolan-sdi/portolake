@@ -329,6 +329,168 @@ class IcebergBackend:
             message="Drift detection pending sync implementation",
         )
 
+    # ------------------------------------------------------------------
+    # Optional lifecycle hooks (not part of VersioningBackend protocol)
+    # ------------------------------------------------------------------
+
+    def on_post_add(self, context: dict) -> None:
+        """Post-add hook: update STAC extensions and upload metadata to remote.
+
+        Called by portolan-cli after add_dataset() completes local processing.
+        """
+        import logging
+
+        import pystac
+
+        logger = logging.getLogger(__name__)
+
+        collection_id: str = context["collection_id"]
+        collection_dir = context["collection_dir"]
+        collection: pystac.Collection = context["collection"]
+
+        # Step 1: Update collection.json with STAC extension metadata
+        try:
+            stac_metadata = self.get_stac_metadata(collection_id)
+            for key, value in stac_metadata.items():
+                collection.extra_fields[key] = value
+            collection.normalize_hrefs(str(collection_dir))
+            collection.save(catalog_type=pystac.CatalogType.SELF_CONTAINED)
+        except Exception:
+            logger.debug("Could not update STAC extensions for collection %s", collection_id)
+
+        # Step 2: Upload STAC metadata to remote (if configured)
+        remote: str | None = context.get("remote")
+        if remote is None:
+            return
+
+        self._upload_stac_metadata(
+            catalog_root=context["catalog_root"],
+            collection_id=collection_id,
+            item_id=context["item_id"],
+            remote=remote,
+        )
+
+    def _upload_stac_metadata(
+        self,
+        catalog_root: Path,
+        collection_id: str,
+        item_id: str,
+        remote: str,
+    ) -> None:
+        """Upload STAC metadata JSON files to remote storage.
+
+        Only uploads STAC metadata (item JSON, collection JSON, catalog.json).
+        Data files are NOT uploaded — they live in the Iceberg warehouse.
+        """
+        from portolan_cli.upload import upload_file
+
+        remote = remote.rstrip("/")
+
+        item_json = catalog_root / collection_id / item_id / f"{item_id}.json"
+        if item_json.exists():
+            upload_file(source=item_json, destination=f"{remote}/{collection_id}/{item_id}/{item_id}.json")
+
+        collection_json = catalog_root / collection_id / "collection.json"
+        if collection_json.exists():
+            upload_file(source=collection_json, destination=f"{remote}/{collection_id}/collection.json")
+
+        catalog_json = catalog_root / "catalog.json"
+        if catalog_json.exists():
+            upload_file(source=catalog_json, destination=f"{remote}/catalog.json")
+
+    def pull(
+        self,
+        remote_url: str,
+        local_root: Path,
+        collection: str,
+        *,
+        dry_run: bool = False,
+    ):
+        """Pull files from remote using Iceberg version info.
+
+        Queries get_current_version() for asset info, then downloads each
+        asset from {remote_url}/{href} to {local_root}/{href}.
+        """
+        from portolan_cli.download import download_file
+        from portolan_cli.output import detail, error, info, success
+        from portolan_cli.pull import PullResult
+
+        remote_url = remote_url.rstrip("/")
+
+        try:
+            version = self.get_current_version(collection)
+        except FileNotFoundError:
+            info(f"No versions found for collection '{collection}'")
+            return PullResult(
+                success=True,
+                files_downloaded=0,
+                files_skipped=0,
+                local_version=None,
+                remote_version=None,
+                up_to_date=True,
+            )
+
+        if dry_run:
+            info(f"[DRY RUN] Would pull {len(version.assets)} file(s) from {remote_url}")
+            for asset_key in version.assets:
+                detail(f"  {asset_key}")
+            return PullResult(
+                success=True,
+                files_downloaded=len(version.assets),
+                files_skipped=0,
+                local_version=None,
+                remote_version=version.version,
+                dry_run=True,
+            )
+
+        downloaded = 0
+        failed = 0
+        for _asset_key, asset in version.assets.items():
+            source = f"{remote_url}/{asset.href}"
+            dest = local_root / Path(asset.href)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+
+            result = download_file(source=source, destination=dest)
+            if result.success:
+                downloaded += result.files_downloaded
+            else:
+                failed += 1
+
+        if failed > 0:
+            error(f"Failed to download {failed} file(s)")
+            return PullResult(
+                success=False,
+                files_downloaded=downloaded,
+                files_skipped=0,
+                local_version=None,
+                remote_version=version.version,
+            )
+
+        success(f"Pulled {downloaded} file(s) (version {version.version})")
+        return PullResult(
+            success=True,
+            files_downloaded=downloaded,
+            files_skipped=0,
+            local_version=None,
+            remote_version=version.version,
+        )
+
+    def supports_push(self) -> bool:
+        """Iceberg backend does not support push — add already uploads."""
+        return False
+
+    def push_blocked_message(self, remote: str | None) -> str:
+        """Return human-readable message explaining why push is blocked."""
+        if remote:
+            return (
+                "Push is not needed with the 'iceberg' backend. "
+                "The `add` command already uploads data to the configured remote."
+            )
+        return (
+            "Push is not supported with the 'iceberg' backend. "
+            "The iceberg backend manages versions through its catalog."
+        )
+
 
 def _read_parquet_assets(assets: dict[str, str]) -> pa.Table | None:
     """Read Parquet data from asset file paths, concatenate, and add spatial columns."""
