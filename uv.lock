@@ -2211,7 +2211,7 @@ provides-extras = ["dev", "gcs"]
 
 [[package]]
 name = "portolan-cli"
-version = "0.5.0"
+version = "0.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2222,9 +2222,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rio-cogeo" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/09/eb/957bbc4fef78edd8cc4cd03a0260de33472d46f613581d50f4ac7308b10b/portolan_cli-0.5.0.tar.gz", hash = "sha256:f098af1af20634705d98f89150101dbe3c72bcaa7ee6a0b5c77a0d537bd6ef9d", size = 5035133, upload-time = "2026-03-08T20:36:14.273Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5f/93/c7f28b69fa7b608f15c7baebbb23b36e87695a2ca6d86aa6b60304dda220/portolan_cli-0.6.0.tar.gz", hash = "sha256:212fc93b05ba7c68a0419f977a15885a221dc082bc38394cd1938cfde1fdd42d", size = 5417835, upload-time = "2026-03-19T17:10:00.535Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/7d/0c8f6711d97f7b81b7f3a3e27f997dda123031e4284fa5e049ff00b8df58/portolan_cli-0.5.0-py3-none-any.whl", hash = "sha256:5df1c70667600f2fd4df748a1b64463a18469f103f9967ee387449fcfe994772", size = 224450, upload-time = "2026-03-08T20:36:12.225Z" },
+    { url = "https://files.pythonhosted.org/packages/f2/06/4da39226e1ee496257d4189e33f091352b5361d9968209b80fa99bb2c961/portolan_cli-0.6.0-py3-none-any.whl", hash = "sha256:9dae34214e5a108c69916c0834e6678838d8ead121748c8527e3ffce1fd1c74a", size = 247192, upload-time = "2026-03-19T17:09:58.822Z" },
 ]
 
 [[package]]

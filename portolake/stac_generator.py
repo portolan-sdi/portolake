@@ -76,6 +76,9 @@ def _detect_primary_geometry(field_names: list[str]) -> str | None:
 
 
 def generate_table_metadata(table: Table) -> dict[str, Any]:
+    # portolan-cli also generates table:* from GeoParquet source metadata.
+    # This version reflects the Iceberg table state and takes precedence
+    # when the Iceberg backend is active (applied via on_post_add hook).
     """Generate STAC Table Extension fields from an Iceberg table.
 
     Returns a dict with:

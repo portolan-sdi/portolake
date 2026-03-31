@@ -336,7 +336,8 @@ class IcebergBackend:
     def on_post_add(self, context: dict) -> None:
         """Post-add hook: update STAC extensions and upload metadata to remote.
 
-        Called by portolan-cli after add_dataset() completes local processing.
+        Called by portolan-cli's finalize_datasets() after versioning completes.
+        Receives batch context with all items in the collection.
         """
         import logging
 
@@ -348,7 +349,9 @@ class IcebergBackend:
         collection_dir = context["collection_dir"]
         collection: pystac.Collection = context["collection"]
 
-        # Step 1: Update collection.json with STAC extension metadata
+        # Overwrites any table:* fields set by portolan-cli's pipeline.
+        # Iceberg state is the source of truth: reflects actual row count,
+        # excludes derived columns (geohash_*, bbox_*), and uses Iceberg schema.
         try:
             stac_metadata = self.get_stac_metadata(collection_id)
             for key, value in stac_metadata.items():
@@ -358,17 +361,20 @@ class IcebergBackend:
         except Exception:
             logger.debug("Could not update STAC extensions for collection %s", collection_id)
 
-        # Step 2: Upload STAC metadata to remote (if configured)
+        # Upload STAC metadata to remote (if configured)
         remote: str | None = context.get("remote")
         if remote is None:
             return
 
-        self._upload_stac_metadata(
-            catalog_root=context["catalog_root"],
-            collection_id=collection_id,
-            item_id=context["item_id"],
-            remote=remote,
-        )
+        # Support batch context (items list) and single-item backward compat
+        items = context.get("items", [{"item_id": context["item_id"]}])
+        for item_info in items:
+            self._upload_stac_metadata(
+                catalog_root=context["catalog_root"],
+                collection_id=collection_id,
+                item_id=item_info["item_id"],
+                remote=remote,
+            )
 
     def _upload_stac_metadata(
         self,
