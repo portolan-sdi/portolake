@@ -125,13 +125,12 @@ print(version.version)  # "1.1.0" (minor bump)
 
 ### rollback
 
-Roll back to a previous version. This creates a **new** version with the target version's assets — it does not rewrite history.
+Roll back to a previous version. Uses Iceberg's native snapshot management to set the current snapshot pointer back to the target version. No data is copied — this is instant.
 
 ```python
 # Roll back to version 1.0.0
 rolled = backend.rollback("demographics", "1.0.0")
-print(rolled.version)  # "1.3.0" (new version, not 1.0.0)
-print(rolled.message)  # "Rollback to 1.0.0"
+print(rolled.version)  # "1.0.0" (restored, not a new version)
 ```
 
 **Parameters:**
@@ -141,7 +140,7 @@ print(rolled.message)  # "Rollback to 1.0.0"
 | `collection` | `str` | Collection identifier |
 | `target_version` | `str` | Semantic version string to roll back to |
 
-**Returns:** `Version` — the newly created rollback version.
+**Returns:** `Version` — the restored version.
 
 **Raises:** `ValueError` if the target version doesn't exist.
 

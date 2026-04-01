@@ -153,7 +153,7 @@ def test_time_travel_reads_correct_data(
 
 @pytest.mark.integration
 def test_rollback_restores_data(iceberg_backend, iceberg_catalog, parquet_file, parquet_file_v2):
-    """Rollback should create a new snapshot with the target version's data."""
+    """Rollback should set current snapshot to the target, restoring its data."""
     # Publish v1 with 3 rows
     iceberg_backend.publish(
         collection="buildings",
@@ -174,18 +174,14 @@ def test_rollback_restores_data(iceberg_backend, iceberg_catalog, parquet_file, 
 
     # Rollback to v1
     rolled = iceberg_backend.rollback("buildings", "1.0.0")
-    assert rolled.version == "1.2.0"
+    assert rolled.version == "1.0.0"
 
-    # The rolled-back version should have v1's data accessible
+    # Current snapshot should point to v1's data (3 rows)
     table = iceberg_catalog.load_table("portolake.buildings")
-    rollback_snap = table.current_snapshot()
-    rollback_data = table.scan(snapshot_id=rollback_snap.snapshot_id).to_arrow()
-
-    # Rollback snapshot should contain v1 data (3 rows)
-    v1_ids = sorted(rollback_data.column("id").to_pylist())
-    assert 1 in v1_ids
-    assert 2 in v1_ids
-    assert 3 in v1_ids
+    current_data = table.scan().to_arrow()
+    assert len(current_data) == 3
+    v1_ids = sorted(current_data.column("id").to_pylist())
+    assert v1_ids == [1, 2, 3]
 
 
 # --- Schema evolution ---

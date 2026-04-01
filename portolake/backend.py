@@ -225,8 +225,8 @@ class IcebergBackend:
     def rollback(self, collection: str, target_version: str) -> Version:
         """Rollback to a previous version.
 
-        Creates a NEW version with the target version's data,
-        preserving full history.
+        Uses Iceberg's native snapshot management to set the current snapshot
+        pointer back to the target version. No data is copied — this is instant.
         """
         table_id = self._table_id(collection)
         try:
@@ -247,28 +247,7 @@ class IcebergBackend:
         if target_snap is None:
             raise ValueError(f"Version {target_version} not found in collection: {collection}")
 
-        target_ver = snapshot_to_version(target_snap)
-
-        current_version = self._get_current_version_str(table)
-        next_ver = compute_next_version(current_version, breaking=False)
-
-        rollback_message = f"Rollback to {target_version}"
-
-        props = version_to_snapshot_properties(
-            next_ver,
-            breaking=False,
-            message=rollback_message,
-            assets=target_ver.assets,
-            schema=target_ver.schema,
-            changes=list(target_ver.assets.keys()),
-        )
-
-        # Read data from the target snapshot and write as new snapshot
-        target_data = table.scan(snapshot_id=target_snap.snapshot_id).to_arrow()
-        if len(target_data) > 0:
-            table.append(target_data, snapshot_properties=props)
-        else:
-            table.append(_empty_table(table.schema().as_arrow()), snapshot_properties=props)
+        table.manage_snapshots().set_current_snapshot(target_snap.snapshot_id).commit()
 
         table = self._catalog.load_table(table_id)
         return snapshot_to_version(table.current_snapshot())

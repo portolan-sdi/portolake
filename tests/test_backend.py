@@ -211,8 +211,8 @@ def test_list_versions_ordered_oldest_first(iceberg_backend, tmp_path):
 
 
 @pytest.mark.integration
-def test_rollback_creates_new_version(iceberg_backend, tmp_path):
-    """Rollback should create a NEW version, not rewrite history."""
+def test_rollback_restores_target_version(iceberg_backend, tmp_path):
+    """Rollback should set current snapshot to the target version."""
     asset = _write_parquet(tmp_path / "data.parquet")
 
     iceberg_backend.publish(
@@ -233,15 +233,15 @@ def test_rollback_creates_new_version(iceberg_backend, tmp_path):
     )
 
     rolled = iceberg_backend.rollback("test-collection", "1.0.0")
-    assert rolled.version == "1.2.0"
+    assert rolled.version == "1.0.0"
 
-    versions = iceberg_backend.list_versions("test-collection")
-    assert len(versions) == 3
+    current = iceberg_backend.get_current_version("test-collection")
+    assert current.version == "1.0.0"
 
 
 @pytest.mark.integration
 def test_rollback_preserves_target_assets(iceberg_backend, tmp_path):
-    """Rollback should restore the target version's assets."""
+    """Rollback should restore the target version's asset metadata."""
     asset = _write_parquet(tmp_path / "data.parquet", {"id": [1], "val": ["v1"]})
 
     iceberg_backend.publish(
@@ -263,6 +263,7 @@ def test_rollback_preserves_target_assets(iceberg_backend, tmp_path):
     )
 
     rolled = iceberg_backend.rollback("test-collection", "1.0.0")
+    assert rolled.version == "1.0.0"
     assert rolled.assets["data.parquet"].sha256 == v1.assets["data.parquet"].sha256
 
 
