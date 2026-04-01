@@ -29,7 +29,7 @@ hide:
 
     ---
 
-    Roll back to any previous version — creates a new version preserving full history
+    Roll back to any previous version — uses native Iceberg snapshot restore, instant and no data copy
 
 - :material-delete-sweep:{ .lg .middle } **Prune**
 

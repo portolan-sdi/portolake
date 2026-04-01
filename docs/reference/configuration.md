@@ -11,11 +11,11 @@ portolan config set backend iceberg
 # Option 2: Environment variable
 export PORTOLAN_BACKEND=iceberg
 
-# Option 3: Per-command flag
-portolan version --backend iceberg list demographics
+# Option 3: Set during init
+portolan init my-catalog --backend iceberg
 ```
 
-Once set, all `portolan version` and `portolan push` commands will use Portolake's Iceberg backend.
+Once set, all portolan commands will use Portolake's Iceberg backend. See [CLI Commands](cli.md) for how each command behaves with the Iceberg backend.
 
 ## Iceberg Catalog Configuration
 
@@ -28,8 +28,8 @@ With no configuration, Portolake uses a local SQLite catalog:
 | Setting | Default |
 |---------|---------|
 | Catalog type | `sql` (SQLite) |
-| Catalog URI | `sqlite:///<cwd>/.portolake/catalog.db` |
-| Warehouse | `file:///<cwd>/.portolake/warehouse` |
+| Catalog URI | `sqlite:///<cwd>/.portolan/iceberg.db` |
+| Warehouse | `file:///<cwd>/.portolan/warehouse` |
 
 This is ideal for local development and single-user workflows.
 
@@ -62,8 +62,8 @@ Zero-configuration local catalog. Good for development and small teams.
 ```bash
 # These are the defaults — no need to set them
 export PYICEBERG_CATALOG__PORTOLAKE__TYPE=sql
-export PYICEBERG_CATALOG__PORTOLAKE__URI=sqlite:///$(pwd)/.portolake/catalog.db
-export PYICEBERG_CATALOG__PORTOLAKE__WAREHOUSE=file:///$(pwd)/.portolake/warehouse
+export PYICEBERG_CATALOG__PORTOLAKE__URI=sqlite:///$(pwd)/.portolan/iceberg.db
+export PYICEBERG_CATALOG__PORTOLAKE__WAREHOUSE=file:///$(pwd)/.portolan/warehouse
 ```
 
 ### PostgreSQL
@@ -153,7 +153,7 @@ PyIceberg resolves configuration in this order (highest to lowest):
 
 1. **Environment variables** (`PYICEBERG_CATALOG__PORTOLAKE__*`)
 2. **PyIceberg config file** (`~/.pyiceberg.yaml`)
-3. **Portolake defaults** (SQLite in `.portolake/`)
+3. **Portolake defaults** (SQLite in `.portolan/`)
 
 ## Programmatic Override
 

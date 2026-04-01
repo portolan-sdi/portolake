@@ -73,6 +73,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Reference:
+    - CLI Commands: reference/cli.md
     - API: reference/api.md
     - Configuration: reference/configuration.md
   - Contributing: contributing.md
