@@ -224,15 +224,58 @@ These types are defined in `portolan_cli.versions` and used throughout the API:
 
 ## How It Works
 
-Portolake stores version metadata in **Iceberg snapshot summary properties** — not in the data files themselves. Each `publish`, `rollback`, or `prune` call creates or modifies Iceberg snapshots with `portolake.*` properties:
+### Versioning: semver on top of Iceberg snapshots
 
-| Property | Example |
-|----------|---------|
-| `portolake.version` | `"1.2.0"` |
-| `portolake.breaking` | `"false"` |
-| `portolake.message` | `"Updated data"` |
-| `portolake.assets` | JSON-serialized asset metadata |
-| `portolake.schema` | JSON-serialized schema info |
-| `portolake.changes` | JSON-serialized list of changed files |
+Iceberg natively identifies versions by **snapshot ID** — a 64-bit integer (e.g., `4116805692239496156`). Portolake adds a **semantic versioning layer on top** by storing a semver string in each snapshot's summary properties.
+
+Each Iceberg snapshot has a `summary` — a string key-value map for custom metadata. Portolake writes version info there:
+
+```python
+# What portolake stores in each snapshot's summary:
+{
+    "portolake.version": "1.1.0",
+    "portolake.breaking": "false",
+    "portolake.message": "Updated population data",
+    "portolake.assets": '{"data.parquet": {"sha256": "...", "size_bytes": 4500, "href": "boundaries/data.parquet"}}',
+    "portolake.schema": '{"type": "geoparquet", "fingerprint": {...}}',
+    "portolake.changes": '["data.parquet"]'
+}
+```
+
+This means version metadata is stored **inside Iceberg's own metadata** — in the `.metadata.json` and manifest files in the warehouse. There is no external `versions.json` or separate database. The version info travels with the Iceberg table.
+
+You can inspect it directly with PyIceberg:
+
+```python
+from pyiceberg.catalog import load_catalog
+
+catalog = load_catalog("portolake")
+table = catalog.load_table("portolake.boundaries")
+
+for snap in table.snapshots():
+    props = snap.summary.additional_properties
+    print(f"Snapshot {snap.snapshot_id}")                # Iceberg native ID
+    print(f"  Version: {props['portolake.version']}")    # Portolake semver
+    print(f"  Message: {props.get('portolake.message')}")
+```
+
+### Why semver instead of snapshot IDs?
+
+The semver overlay exists because portolan-cli's `Version` dataclass uses semantic versioning across all backends. The file backend stores semver in `versions.json`; the Iceberg backend stores it in snapshot properties. This keeps the CLI consistent — `portolan version rollback boundaries 1.0.0` is more user-friendly than a 19-digit snapshot ID.
+
+### Snapshot summary properties
+
+| Property | Example | Description |
+|----------|---------|-------------|
+| `portolake.version` | `"1.2.0"` | Semantic version string |
+| `portolake.breaking` | `"false"` | Whether this is a breaking change |
+| `portolake.message` | `"Updated data"` | Human-readable description |
+| `portolake.assets` | JSON string | Asset metadata (sha256, size, href) |
+| `portolake.schema` | JSON string | Schema fingerprint |
+| `portolake.changes` | JSON string | List of changed filenames |
+
+### Collection-to-table mapping
 
 Each collection maps to an Iceberg table under the `portolake` namespace: `portolake.<collection_name>`.
+
+For example, `portolan add data.parquet --collection boundaries` creates an Iceberg table `portolake.boundaries`.
