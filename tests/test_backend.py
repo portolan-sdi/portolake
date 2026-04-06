@@ -1,5 +1,7 @@
 """Tests for IcebergBackend implementation."""
 
+import sys
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -412,6 +414,10 @@ def test_directory_traversal_rejected(iceberg_backend):
 # --- catalog_root wiring ---
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PyIceberg SQL catalog warehouse paths broken on Windows (apache/iceberg-python#1005)",
+)
 @pytest.mark.integration
 def test_backend_with_catalog_root_creates_files_in_correct_location(tmp_path, monkeypatch):
     """IcebergBackend(catalog_root=path) should create iceberg.db under path/.portolan/."""

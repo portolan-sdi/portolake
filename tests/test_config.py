@@ -46,7 +46,9 @@ def test_default_properties_without_catalog_root_uses_cwd():
     props = _default_properties()
     cwd = str(Path.cwd())
     assert cwd in props["uri"]
-    assert cwd in props["warehouse"]
+    # warehouse uses Path.as_uri() which normalizes separators
+    cwd_uri = Path.cwd().as_uri()
+    assert cwd_uri in props["warehouse"]
 
 
 @_skip_windows_sqlite
