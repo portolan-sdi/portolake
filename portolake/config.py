@@ -20,11 +20,11 @@ CATALOG_NAME = "portolake"
 
 def _default_properties(catalog_root: Path | None = None) -> dict[str, str]:
     """Build default catalog properties (SQL/SQLite, local warehouse)."""
-    root = str(catalog_root or Path.cwd())
+    root = catalog_root or Path.cwd()
     return {
         "type": "sql",
         "uri": f"sqlite:///{root}/.portolan/iceberg.db",
-        "warehouse": f"file:///{root}/.portolan/warehouse",
+        "warehouse": (root / ".portolan" / "warehouse").as_uri(),
     }
 
 

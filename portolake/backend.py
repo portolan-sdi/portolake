@@ -373,11 +373,15 @@ class IcebergBackend:
 
         item_json = catalog_root / collection_id / item_id / f"{item_id}.json"
         if item_json.exists():
-            upload_file(source=item_json, destination=f"{remote}/{collection_id}/{item_id}/{item_id}.json")
+            upload_file(
+                source=item_json, destination=f"{remote}/{collection_id}/{item_id}/{item_id}.json"
+            )
 
         collection_json = catalog_root / collection_id / "collection.json"
         if collection_json.exists():
-            upload_file(source=collection_json, destination=f"{remote}/{collection_id}/collection.json")
+            upload_file(
+                source=collection_json, destination=f"{remote}/{collection_id}/collection.json"
+            )
 
         catalog_json = catalog_root / "catalog.json"
         if catalog_json.exists():

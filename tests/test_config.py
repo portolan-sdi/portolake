@@ -20,7 +20,7 @@ def test_default_properties_uses_portolan_dir_and_iceberg_db():
     props = _default_properties()
     assert props["uri"].startswith("sqlite:///")
     assert ".portolan/iceberg.db" in props["uri"]
-    assert props["warehouse"].startswith("file:///")
+    assert props["warehouse"].startswith("file:")
     assert ".portolan/warehouse" in props["warehouse"]
 
 
@@ -29,7 +29,7 @@ def test_default_properties_with_catalog_root(tmp_path):
     """catalog_root should determine the base path for SQLite URI and warehouse."""
     props = _default_properties(catalog_root=tmp_path)
     expected_uri = f"sqlite:///{tmp_path}/.portolan/iceberg.db"
-    expected_warehouse = f"file:///{tmp_path}/.portolan/warehouse"
+    expected_warehouse = (tmp_path / ".portolan" / "warehouse").as_uri()
     assert props["uri"] == expected_uri
     assert props["warehouse"] == expected_warehouse
 
@@ -66,7 +66,7 @@ def test_create_catalog_returns_catalog_instance(tmp_path, monkeypatch):
     )
     monkeypatch.setenv(
         "PYICEBERG_CATALOG__PORTOLAKE__WAREHOUSE",
-        f"file:///{tmp_path}/warehouse",
+        (tmp_path / "warehouse").as_uri(),
     )
     catalog = create_catalog()
     assert isinstance(catalog, Catalog)
@@ -79,7 +79,7 @@ def test_pyiceberg_env_vars_override_defaults(tmp_path, monkeypatch):
     monkeypatch.setenv("PYICEBERG_CATALOG__PORTOLAKE__URI", custom_uri)
     monkeypatch.setenv(
         "PYICEBERG_CATALOG__PORTOLAKE__WAREHOUSE",
-        f"file:///{tmp_path}/warehouse",
+        (tmp_path / "warehouse").as_uri(),
     )
     catalog = create_catalog()
     # The catalog should be created successfully with the custom URI

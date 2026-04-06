@@ -72,7 +72,11 @@ def test_on_post_add_updates_stac_extensions(iceberg_backend, parquet_file, cata
     iceberg_backend.publish(
         collection="boundaries",
         assets={"item1/data.parquet": str(parquet_file)},
-        schema={"columns": ["id", "name", "value"], "types": {"id": "int64", "name": "string", "value": "float64"}, "hash": "abc"},
+        schema={
+            "columns": ["id", "name", "value"],
+            "types": {"id": "int64", "name": "string", "value": "float64"},
+            "hash": "abc",
+        },
         breaking=False,
         message="test",
     )
@@ -136,9 +140,7 @@ def test_on_post_add_no_upload_when_remote_is_none(
 
 
 @pytest.mark.integration
-def test_on_post_add_uploads_correct_remote_paths(
-    iceberg_backend, parquet_file, catalog_with_stac
-):
+def test_on_post_add_uploads_correct_remote_paths(iceberg_backend, parquet_file, catalog_with_stac):
     """Remote paths should follow the correct pattern for STAC metadata."""
     catalog_root, item_dir, collection = catalog_with_stac
 
@@ -165,9 +167,7 @@ def test_on_post_add_uploads_correct_remote_paths(
 
 
 @pytest.mark.integration
-def test_on_post_add_strips_trailing_slash(
-    iceberg_backend, parquet_file, catalog_with_stac
-):
+def test_on_post_add_strips_trailing_slash(iceberg_backend, parquet_file, catalog_with_stac):
     """Trailing slash in remote URL should be stripped to avoid double-slash."""
     catalog_root, item_dir, collection = catalog_with_stac
 
@@ -190,9 +190,7 @@ def test_on_post_add_strips_trailing_slash(
 
 
 @pytest.mark.integration
-def test_on_post_add_no_data_files_uploaded(
-    iceberg_backend, parquet_file, catalog_with_stac
-):
+def test_on_post_add_no_data_files_uploaded(iceberg_backend, parquet_file, catalog_with_stac):
     """on_post_add should never upload data files — Iceberg manages them."""
     catalog_root, item_dir, collection = catalog_with_stac
 

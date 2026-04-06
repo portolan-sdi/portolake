@@ -174,8 +174,7 @@ def generate_collection_metadata(table: Table) -> dict[str, Any]:
             "type": "application/x-iceberg",
             "roles": ["data"],
             "description": (
-                "Apache Iceberg table — use PyIceberg, DuckDB iceberg_scan(), "
-                "or Spark to query"
+                "Apache Iceberg table — use PyIceberg, DuckDB iceberg_scan(), or Spark to query"
             ),
         }
     }

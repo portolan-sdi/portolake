@@ -9,12 +9,13 @@ from pyiceberg.catalog import load_catalog
 @pytest.fixture
 def iceberg_catalog(tmp_path):
     """Create a temporary Iceberg catalog backed by SQLite."""
+    warehouse_uri = (tmp_path / "warehouse").as_uri()
     return load_catalog(
         "test",
         **{
             "type": "sql",
             "uri": f"sqlite:///{tmp_path}/catalog.db",
-            "warehouse": f"file:///{tmp_path}/warehouse",
+            "warehouse": warehouse_uri,
         },
     )
 
