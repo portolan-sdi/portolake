@@ -1,10 +1,16 @@
 """Tests for catalog configuration and creation."""
 
+import sys
 from pathlib import Path
 
 import pytest
 
 from portolake.config import _default_properties, create_catalog
+
+_skip_windows_sqlite = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="PyIceberg SQL catalog warehouse paths broken on Windows (apache/iceberg-python#1005)",
+)
 
 
 @pytest.mark.unit
@@ -43,6 +49,7 @@ def test_default_properties_without_catalog_root_uses_cwd():
     assert cwd in props["warehouse"]
 
 
+@_skip_windows_sqlite
 @pytest.mark.integration
 def test_create_catalog_with_catalog_root(tmp_path, monkeypatch):
     """create_catalog(catalog_root=path) should create iceberg.db under path/.portolan/."""
@@ -55,6 +62,7 @@ def test_create_catalog_with_catalog_root(tmp_path, monkeypatch):
     assert (tmp_path / ".portolan" / "iceberg.db").exists()
 
 
+@_skip_windows_sqlite
 @pytest.mark.integration
 def test_create_catalog_returns_catalog_instance(tmp_path, monkeypatch):
     """create_catalog() should return a working Catalog instance."""
@@ -72,6 +80,7 @@ def test_create_catalog_returns_catalog_instance(tmp_path, monkeypatch):
     assert isinstance(catalog, Catalog)
 
 
+@_skip_windows_sqlite
 @pytest.mark.integration
 def test_pyiceberg_env_vars_override_defaults(tmp_path, monkeypatch):
     """PyIceberg env vars should override default properties."""

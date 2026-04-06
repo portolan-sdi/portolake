@@ -1,14 +1,26 @@
 """Shared test fixtures for portolake tests."""
 
+import sys
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from pyiceberg.catalog import load_catalog
 
+# PyIceberg's SQL catalog resolves file:// warehouse URIs incorrectly on Windows,
+# producing paths like /C:/Users/... which PyArrow's local filesystem rejects.
+# Upstream: https://github.com/apache/iceberg-python/issues/1005 (closed, fix never merged)
+# PyIceberg doesn't run CI on Windows: https://github.com/apache/iceberg-python/issues/2477
+
 
 @pytest.fixture
 def iceberg_catalog(tmp_path):
     """Create a temporary Iceberg catalog backed by SQLite."""
+    if sys.platform == "win32":
+        pytest.skip(
+            "PyIceberg SQL catalog warehouse paths broken on Windows"
+            " (https://github.com/apache/iceberg-python/issues/1005)"
+        )
     warehouse_uri = (tmp_path / "warehouse").as_uri()
     return load_catalog(
         "test",
