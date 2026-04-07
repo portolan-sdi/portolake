@@ -64,7 +64,8 @@ def docker_services():
 
 
 @pytest.fixture
-def rest_catalog(docker_services):
+@pytest.mark.usefixtures("docker_services")
+def rest_catalog():
     """PyIceberg catalog pointing at the dockerized REST catalog + MinIO."""
     return load_catalog(
         "e2e-test",
@@ -85,7 +86,8 @@ def rest_iceberg_backend(rest_catalog):
 
 
 @pytest.fixture
-def minio_client(docker_services):
+@pytest.mark.usefixtures("docker_services")
+def minio_client():
     """boto3 S3 client for direct MinIO verification."""
     import boto3
 
