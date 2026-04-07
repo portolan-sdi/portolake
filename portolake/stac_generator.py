@@ -45,7 +45,7 @@ _TYPE_MAP: dict[type, str] = {
 }
 
 STAC_TABLE_EXTENSION = "https://stac-extensions.github.io/table/v1.2.0/schema.json"
-STAC_ICEBERG_EXTENSION = "https://portolan.org/stac-extensions/iceberg/v1.0.0/schema.json"
+STAC_ICEBERG_EXTENSION = "https://portolan-sdi.github.io/stac-iceberg-extension/v1.0.0/schema.json"
 
 # Map PyIceberg catalog class names to catalog type strings
 _CATALOG_TYPE_MAP: dict[str, str] = {
