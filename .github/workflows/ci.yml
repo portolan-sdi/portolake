@@ -106,7 +106,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Check for dead code
-        run: uv run vulture portolake tests --min-confidence 80
+        run: uv run vulture portolake tests vulture_whitelist.py --min-confidence 80
 
       - name: Check code complexity
         run: uv run xenon --max-absolute=C --max-modules=B --max-average=A portolake tests

@@ -79,7 +79,13 @@ def initialized_iceberg_catalog(tmp_path: Path, runner: CliRunner) -> Path:
     """Create a full portolan catalog initialized with iceberg backend.
 
     Patches _get_external_config to isolate from ~/.pyiceberg.yaml.
+    Skips on Windows due to PyIceberg SQL catalog path bug.
     """
+    if sys.platform == "win32":
+        pytest.skip(
+            "PyIceberg SQL catalog warehouse paths broken on Windows"
+            " (https://github.com/apache/iceberg-python/issues/1005)"
+        )
     with patch("portolake.config._get_external_config", return_value=None):
         result = runner.invoke(
             cli,
