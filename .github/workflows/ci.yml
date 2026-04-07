@@ -81,7 +81,7 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run tests
-        run: uv run pytest tests/ -v --tb=short -m "not network and not slow and not benchmark" --cov=portolake --cov-report=term-missing --cov-report=xml
+        run: uv run pytest tests/ -v --tb=short -m "not network and not slow and not benchmark and not e2e" --cov=portolake --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage reports to Codecov
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'

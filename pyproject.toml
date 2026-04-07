@@ -59,6 +59,9 @@ dev = [
 gcs = [
     "gcsfs>=2026.2.0",
 ]
+e2e = [
+    "boto3>=1.35.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["portolake"]
@@ -87,6 +90,8 @@ markers = [
     "network: Requires network access (mocked locally, real in CI nightly)",
     "benchmark: Performance measurement, tracked over time",
     "slow: Takes > 5 seconds",
+    "e2e: End-to-end tests requiring Docker (REST catalog + MinIO)",
+    "e2e_slow: Extended E2E tests (concurrency stress, large datasets) — nightly only",
 ]
 
 [tool.coverage.run]
