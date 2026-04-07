@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: GIS",
 ]
 dependencies = [
-    "portolan-cli",
+    "portolan-cli @ git+https://github.com/portolan-sdi/portolan-cli.git@main",  # TODO: revert to "portolan-cli" once PyPI release includes --backend
     "pyarrow>=12.0.0,<22.0.0",  # v22+ has ABI incompatibility with abseil on some systems
     "pyiceberg[sql-sqlite]>=0.8.0",
     "shapely>=2.0.0",
@@ -62,6 +62,9 @@ gcs = [
 e2e = [
     "boto3>=1.35.0",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true  # TODO: remove once portolan-cli PyPI release includes --backend
 
 [tool.hatch.build.targets.wheel]
 packages = ["portolake"]
