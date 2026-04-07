@@ -14,8 +14,8 @@ def test_import_portolake():
 @pytest.mark.unit
 def test_import_dependencies():
     """Verify core dependencies are importable."""
-    import click
     import pyarrow
+    import pyiceberg
 
-    assert click is not None
     assert pyarrow is not None
+    assert pyiceberg is not None
