@@ -505,9 +505,7 @@ def test_generate_collection_metadata_excludes_stac_extensions(
 
 
 @pytest.mark.integration
-def test_generate_collection_metadata_excludes_assets(
-    iceberg_backend, iceberg_catalog, tmp_path
-):
+def test_generate_collection_metadata_excludes_assets(iceberg_backend, iceberg_catalog, tmp_path):
     """generate_collection_metadata should not include assets (pystac manages them)."""
     table_data = pa.table({"id": pa.array([1], type=pa.int64())})
     path = tmp_path / "data.parquet"
