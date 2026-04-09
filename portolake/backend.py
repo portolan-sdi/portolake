@@ -328,13 +328,42 @@ class IcebergBackend:
         collection_dir = context["collection_dir"]
         collection: pystac.Collection = context["collection"]
 
-        # Overwrites any table:* fields set by portolan-cli's pipeline.
         # Iceberg state is the source of truth: reflects actual row count,
         # excludes derived columns (geohash_*, bbox_*), and uses Iceberg schema.
+        # Overwrites table:*/iceberg:* fields set by portolan-cli's pipeline,
+        # but merges stac_extensions and assets to preserve non-portolake entries.
         try:
-            stac_metadata = self.get_stac_metadata(collection_id)
+            from portolake.stac_generator import (
+                STAC_ICEBERG_EXTENSION,
+                STAC_TABLE_EXTENSION,
+                generate_collection_metadata,
+            )
+
+            table = self._catalog.load_table(self._table_id(collection_id))
+            stac_metadata = generate_collection_metadata(table)
+
+            # table:* and iceberg:* fields go to extra_fields
             for key, value in stac_metadata.items():
                 collection.extra_fields[key] = value
+
+            # Merge extensions via pystac attribute — extra_fields["stac_extensions"]
+            # is silently ignored by pystac's Collection.to_dict() serialization.
+            for ext_url in (STAC_TABLE_EXTENSION, STAC_ICEBERG_EXTENSION):
+                if ext_url not in collection.stac_extensions:
+                    collection.stac_extensions.append(ext_url)
+
+            # Set Iceberg data asset via pystac API (not extra_fields["assets"],
+            # which is also ignored by pystac's serialization).
+            collection.assets["data"] = pystac.Asset(
+                href=table.location(),
+                media_type="application/x-iceberg",
+                roles=["data"],
+                description=(
+                    "Apache Iceberg table \u2014 use PyIceberg, DuckDB "
+                    "iceberg_scan(), or Spark to query"
+                ),
+            )
+
             collection.normalize_hrefs(str(collection_dir))
             collection.save(catalog_type=pystac.CatalogType.SELF_CONTAINED)
         except Exception:
