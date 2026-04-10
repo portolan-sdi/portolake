@@ -412,10 +412,10 @@ def test_collection_metadata_includes_table_fields(iceberg_backend, iceberg_cata
     assert "iceberg:catalog_type" in metadata
     assert "iceberg:table_id" in metadata
 
-    # stac_extensions
-    assert "stac_extensions" in metadata
-    assert any("table" in ext for ext in metadata["stac_extensions"])
-    assert any("iceberg" in ext for ext in metadata["stac_extensions"])
+    # stac_extensions and assets are no longer in the return dict —
+    # they are set via pystac APIs in on_post_add()
+    assert "stac_extensions" not in metadata
+    assert "assets" not in metadata
 
 
 @pytest.mark.integration
@@ -475,4 +475,53 @@ def test_get_stac_metadata_from_backend(iceberg_backend, tmp_path):
 
     assert metadata["table:row_count"] == 3
     assert "iceberg:table_id" in metadata
-    assert "stac_extensions" in metadata
+    # stac_extensions no longer in return dict (set via pystac API in on_post_add)
+    assert "stac_extensions" not in metadata
+
+
+@pytest.mark.integration
+def test_generate_collection_metadata_excludes_stac_extensions(
+    iceberg_backend, iceberg_catalog, tmp_path
+):
+    """generate_collection_metadata should not include stac_extensions (pystac manages them)."""
+    table_data = pa.table({"id": pa.array([1], type=pa.int64())})
+    path = tmp_path / "data.parquet"
+    pq.write_table(table_data, path)
+
+    iceberg_backend.publish(
+        collection="no-ext",
+        assets={"data.parquet": str(path)},
+        schema={"columns": ["id"], "types": {}, "hash": "h1"},
+        breaking=False,
+        message="v1",
+    )
+
+    from portolake.stac_generator import generate_collection_metadata
+
+    table = iceberg_catalog.load_table("portolake.no-ext")
+    metadata = generate_collection_metadata(table)
+
+    assert "stac_extensions" not in metadata
+
+
+@pytest.mark.integration
+def test_generate_collection_metadata_excludes_assets(iceberg_backend, iceberg_catalog, tmp_path):
+    """generate_collection_metadata should not include assets (pystac manages them)."""
+    table_data = pa.table({"id": pa.array([1], type=pa.int64())})
+    path = tmp_path / "data.parquet"
+    pq.write_table(table_data, path)
+
+    iceberg_backend.publish(
+        collection="no-assets",
+        assets={"data.parquet": str(path)},
+        schema={"columns": ["id"], "types": {}, "hash": "h1"},
+        breaking=False,
+        message="v1",
+    )
+
+    from portolake.stac_generator import generate_collection_metadata
+
+    table = iceberg_catalog.load_table("portolake.no-assets")
+    metadata = generate_collection_metadata(table)
+
+    assert "assets" not in metadata

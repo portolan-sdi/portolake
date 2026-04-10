@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, patch
 import pystac
 import pytest
 
+from portolake.stac_generator import STAC_ICEBERG_EXTENSION, STAC_TABLE_EXTENSION
+
 
 @pytest.fixture
 def catalog_with_stac(tmp_path: Path) -> tuple[Path, Path, pystac.Collection]:
@@ -86,8 +88,11 @@ def test_on_post_add_updates_stac_extensions(iceberg_backend, parquet_file, cata
     with patch("portolake.backend.upload_file", create=True):
         iceberg_backend.on_post_add(context)
 
-    # Collection should have table:columns from STAC metadata
+    # Collection should have table:columns in extra_fields
     assert "table:columns" in collection.extra_fields
+    # Extensions should be set via pystac attribute, not extra_fields
+    assert STAC_TABLE_EXTENSION in collection.stac_extensions
+    assert STAC_ICEBERG_EXTENSION in collection.stac_extensions
 
 
 @pytest.mark.integration
@@ -210,3 +215,128 @@ def test_on_post_add_no_data_files_uploaded(iceberg_backend, parquet_file, catal
 
     destinations = [call.kwargs["destination"] for call in mock_upload.call_args_list]
     assert not any("data.parquet" in d for d in destinations)
+
+
+# --- Extension and asset merge behavior ---
+
+
+@pytest.mark.integration
+def test_on_post_add_merges_stac_extensions(iceberg_backend, parquet_file, catalog_with_stac):
+    """on_post_add should merge portolake extensions into collection.stac_extensions."""
+    catalog_root, item_dir, collection = catalog_with_stac
+    collection.stac_extensions = [STAC_TABLE_EXTENSION]
+
+    iceberg_backend.publish(
+        collection="boundaries",
+        assets={"item1/data.parquet": str(parquet_file)},
+        schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "x"},
+        breaking=False,
+        message="test",
+    )
+
+    context = _make_context(catalog_root, item_dir, collection, remote=None)
+
+    with patch("portolake.backend.upload_file", create=True):
+        iceberg_backend.on_post_add(context)
+
+    assert STAC_TABLE_EXTENSION in collection.stac_extensions
+    assert STAC_ICEBERG_EXTENSION in collection.stac_extensions
+
+
+@pytest.mark.integration
+def test_on_post_add_preserves_existing_extensions(
+    iceberg_backend, parquet_file, catalog_with_stac
+):
+    """on_post_add should preserve third-party extensions already on the collection."""
+    catalog_root, item_dir, collection = catalog_with_stac
+    projection_ext = "https://stac-extensions.github.io/projection/v2.0.0/schema.json"
+    collection.stac_extensions = [projection_ext]
+
+    iceberg_backend.publish(
+        collection="boundaries",
+        assets={"item1/data.parquet": str(parquet_file)},
+        schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "x"},
+        breaking=False,
+        message="test",
+    )
+
+    context = _make_context(catalog_root, item_dir, collection, remote=None)
+
+    with patch("portolake.backend.upload_file", create=True):
+        iceberg_backend.on_post_add(context)
+
+    assert projection_ext in collection.stac_extensions
+    assert STAC_TABLE_EXTENSION in collection.stac_extensions
+    assert STAC_ICEBERG_EXTENSION in collection.stac_extensions
+
+
+@pytest.mark.integration
+def test_on_post_add_no_duplicate_extensions(iceberg_backend, parquet_file, catalog_with_stac):
+    """on_post_add should not create duplicate extension entries."""
+    catalog_root, item_dir, collection = catalog_with_stac
+    collection.stac_extensions = [STAC_TABLE_EXTENSION, STAC_ICEBERG_EXTENSION]
+
+    iceberg_backend.publish(
+        collection="boundaries",
+        assets={"item1/data.parquet": str(parquet_file)},
+        schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "x"},
+        breaking=False,
+        message="test",
+    )
+
+    context = _make_context(catalog_root, item_dir, collection, remote=None)
+
+    with patch("portolake.backend.upload_file", create=True):
+        iceberg_backend.on_post_add(context)
+
+    assert len(collection.stac_extensions) == len(set(collection.stac_extensions))
+
+
+@pytest.mark.integration
+def test_on_post_add_sets_iceberg_data_asset(iceberg_backend, parquet_file, catalog_with_stac):
+    """on_post_add should set a data asset via pystac API with correct media type."""
+    catalog_root, item_dir, collection = catalog_with_stac
+
+    iceberg_backend.publish(
+        collection="boundaries",
+        assets={"item1/data.parquet": str(parquet_file)},
+        schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "x"},
+        breaking=False,
+        message="test",
+    )
+
+    context = _make_context(catalog_root, item_dir, collection, remote=None)
+
+    with patch("portolake.backend.upload_file", create=True):
+        iceberg_backend.on_post_add(context)
+
+    assert "data" in collection.assets
+    assert collection.assets["data"].media_type == "application/x-iceberg"
+    assert collection.assets["data"].roles == ["data"]
+
+
+@pytest.mark.integration
+def test_on_post_add_preserves_existing_assets(iceberg_backend, parquet_file, catalog_with_stac):
+    """on_post_add should preserve non-data assets already on the collection."""
+    catalog_root, item_dir, collection = catalog_with_stac
+    collection.assets["thumbnail"] = pystac.Asset(
+        href="https://example.com/thumb.png",
+        media_type="image/png",
+        roles=["thumbnail"],
+    )
+
+    iceberg_backend.publish(
+        collection="boundaries",
+        assets={"item1/data.parquet": str(parquet_file)},
+        schema={"columns": ["id"], "types": {"id": "int64"}, "hash": "x"},
+        breaking=False,
+        message="test",
+    )
+
+    context = _make_context(catalog_root, item_dir, collection, remote=None)
+
+    with patch("portolake.backend.upload_file", create=True):
+        iceberg_backend.on_post_add(context)
+
+    assert "thumbnail" in collection.assets
+    assert "data" in collection.assets

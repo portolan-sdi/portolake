@@ -167,19 +167,9 @@ def generate_collection_metadata(table: Table) -> dict[str, Any]:
     snap = table.current_snapshot()
     metadata["iceberg:current_snapshot_id"] = snap.snapshot_id if snap else None
 
-    # Collection-level asset pointing to Iceberg metadata
-    metadata["assets"] = {
-        "data": {
-            "href": table.location(),
-            "type": "application/x-iceberg",
-            "roles": ["data"],
-            "description": (
-                "Apache Iceberg table — use PyIceberg, DuckDB iceberg_scan(), or Spark to query"
-            ),
-        }
-    }
-
-    # STAC extensions list
-    metadata["stac_extensions"] = [STAC_TABLE_EXTENSION, STAC_ICEBERG_EXTENSION]
+    # Assets and stac_extensions are NOT included here — they must be set
+    # via pystac's first-class APIs (collection.assets, collection.stac_extensions)
+    # because pystac ignores extra_fields for these during serialization.
+    # See on_post_add() in backend.py for how they are applied.
 
     return metadata
