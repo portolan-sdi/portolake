@@ -26,7 +26,7 @@ classifiers = [
 ]
 dependencies = [
     "portolan-cli @ git+https://github.com/portolan-sdi/portolan-cli.git@main",  # TODO: revert to "portolan-cli" once PyPI release includes --backend
-    "pyarrow>=12.0.0,<22.0.0",  # v22+ has ABI incompatibility with abseil on some systems
+    "pyarrow>=12.0.0,<25.0.0",  # v22+ has ABI incompatibility with abseil on some systems
     "pyiceberg[sql-sqlite]>=0.8.0",
     "shapely>=2.0.0",
     "pygeohash>=1.2.0",
