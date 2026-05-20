@@ -1,30 +1,30 @@
-# Portolan como Iceberg REST Catalog Estático
+# Portolan as a Static Iceberg REST Catalog
 
-**Propuesta:** Permitir publicar un Portolan como un Iceberg REST Catalog estático sobre object storage — sin servidor, queryable directamente desde DuckDB, y federable con otros Portolans en la misma sesión analítica.
+**Proposal:** Allow publishing a Portolan as a static Iceberg REST Catalog hosted on object storage — no server, queryable directly from DuckDB, and federable with other Portolans in the same analytical session.
 
 ---
 
-## Contexto
+## Context
 
-Portolan ya distribuye sus contenidos como archivos estáticos: STAC para el catálogo, COG para raster, GeoParquet para vector. Toda la pila cloud-native que hemos adoptado encaja en el mismo patrón: subir archivos a object storage, sin servicios que mantener.
+Portolan already distributes its contents as static files: STAC for the catalog, COG for raster, GeoParquet for vector. The entire cloud-native stack we've adopted fits the same pattern: upload files to object storage, no services to maintain.
 
-Lo que falta es un **índice queryable** que cumpla con un estándar que las herramientas analíticas modernas hablen de forma nativa. La buena noticia: **la spec Iceberg REST se puede materializar como un árbol de JSONs estáticos**. Eso cierra el círculo — Portolan publica catálogos cumpliendo Iceberg REST sin necesidad de levantar Polaris, Nessie, o cualquier otro servicio.
+What's missing is a **queryable index** that conforms to a standard modern analytical tools speak natively. The good news: **the Iceberg REST spec can be materialized as a tree of static JSON files**. That closes the loop — Portolan publishes Iceberg-REST-compliant catalogs without needing to run Polaris, Nessie, or any other service.
 
-## Cómo funciona
+## How it works
 
-El generador (ya implementado en la rama `add-sdi-experiment` del portolan original) emite un árbol `v1/` que respeta la spec REST de Iceberg:
+The generator (already implemented on the `add-sdi-experiment` branch of the original portolan repo) emits a `v1/` tree that respects the Iceberg REST spec:
 
 ```
 v1/
 ├── config
 └── catalog/namespaces/
     ├── ne_admin_0/
-    │   └── tables/countries     (metadata JSON apuntando a Parquet existente)
+    │   └── tables/countries     (metadata JSON pointing to existing Parquet)
     └── ne_admin_1/
         └── tables/provinces
 ```
 
-Subes ese árbol a R2 (o S3, GCS, Azure — cualquiera que sirva archivos estáticos vía HTTP). DuckDB se conecta directamente al endpoint:
+You upload that tree to R2 (or S3, GCS, Azure — any backend that serves static files over HTTP). DuckDB connects directly to the endpoint:
 
 ```sql
 INSTALL iceberg; LOAD iceberg;
@@ -36,11 +36,11 @@ ATTACH '' AS portolan (
 SELECT * FROM portolan.ne_admin_0.countries LIMIT 10;
 ```
 
-Sin servidor. Sin proceso corriendo. Sin DB que respaldar. CDN-friendly por defecto. Hosting de un catálogo público completo cuesta del orden de **$5/mes en R2**.
+No server. No running process. No DB to back up. CDN-friendly by default. Hosting a complete public catalog costs on the order of **$5/month on R2**.
 
-## Federación: múltiples Portolans en una sesión
+## Federation: multiple Portolans in one session
 
-Esta es la parte que más diferencia este enfoque. En la misma sesión de DuckDB se pueden adjuntar varios Portolans y hacer queries que crucen catálogos:
+This is the part that most differentiates this approach. In the same DuckDB session you can attach several Portolans and run queries that cross catalogs:
 
 ```sql
 ATTACH '' AS public_admin (
@@ -62,53 +62,53 @@ JOIN public_admin.ne_admin_0.countries c
 WHERE i.acquisition_date > '2025-01-01';
 ```
 
-Un join entre un dataset privado (imagery con auth) y uno público (límites administrativos), resuelto en una sola query analítica. Eso es realmente novedoso en el ecosistema geoespacial.
+A join between a private dataset (imagery with auth) and a public one (administrative boundaries), resolved in a single analytical query. That's genuinely novel in the geospatial ecosystem.
 
-## Autenticación por catálogo
+## Per-catalog authentication
 
-Cada Portolan tiene su propia identidad. El cliente configura las credenciales por cada conexión, igual que ya hacemos con buckets de S3 distintos.
+Each Portolan has its own identity. The client configures credentials per connection, the same way we already do with different S3 buckets.
 
-Tres modos posibles:
+Three possible modes:
 
-- **Público total** — sin credenciales, lectura abierta (NaturalEarth, datos open de gobierno)
-- **Privado total** — credenciales requeridas para todo (catálogos corporativos internos)
-- **Híbrido** — un subconjunto público por defecto; autenticarse desbloquea namespaces o tables adicionales
+- **Fully public** — no credentials, open reads (NaturalEarth, government open data)
+- **Fully private** — credentials required for everything (internal corporate catalogs)
+- **Hybrid** — a public subset by default; authenticating unlocks additional namespaces or tables
 
-El primer prototipo usa auth a nivel de storage (políticas de bucket / signed URLs). El modo "híbrido" requiere un endpoint ligero de auth, pero el grueso del catálogo sigue siendo estático.
+The initial prototype uses storage-layer auth (bucket policies / signed URLs). The hybrid mode requires a lightweight auth endpoint, but the bulk of the catalog remains static.
 
-## Casos de uso
+## Use cases
 
-- Publicar catálogos públicos por unos pocos dólares al mes
-- Publishers comerciales que monetizan acceso a datasets premium
-- Organizaciones con datos sobre su propio object storage que quieren exponerlo internamente
-- Federación entre organizaciones (CARTO + HDX, por ejemplo) sin centralizar nada
+- Publishing public catalogs for a few dollars a month
+- Commercial publishers monetizing access to premium datasets
+- Organizations with data on their own object storage that want to expose it internally
+- Federation across organizations (CARTO + HDX, for example) without centralizing anything
 
-## Cómo encaja con la dirección actual de portolake
+## How it fits portolake's current direction
 
-[ADR-0003](https://github.com/portolan-sdi/portolan-cli/blob/main/context/shared/adr/0003-plugin-architecture.md) ya define una plugin architecture. **El static-catalog y el lakehouse server-based pueden convivir como dos backends del mismo plugin**, eligibles vía configuración:
+[ADR-0003](https://github.com/portolan-sdi/portolan-cli/blob/main/context/shared/adr/0003-plugin-architecture.md) already defines a plugin architecture. **Static-catalog and server-based lakehouse can coexist as two backends of the same plugin**, selectable via configuration:
 
-| Modo | Para qué sirve |
+| Mode | Best for |
 |---|---|
-| **Lakehouse server-based** (lo actual) | Writes concurrentes, ACID estricto, time-travel transaccional |
-| **Static catalog** | Publicación, lectura, federación, hosting barato |
+| **Server-based lakehouse** (current) | Concurrent writes, strict ACID, transactional time travel |
+| **Static catalog** | Publishing, reading, federation, cheap hosting |
 
-No son competidores — resuelven problemas distintos. La elección depende del caso de uso del publisher, no de una decisión de arquitectura global.
+They're not competitors — they solve different problems. The choice depends on the publisher's use case, not on a global architectural decision.
 
-## Estado del prototipo
+## Prototype status
 
-Ya implementado y funcional en la rama `add-sdi-experiment` del portolan original (último commit `d645577`):
+Already implemented and working on the `add-sdi-experiment` branch of the original portolan repo (latest commit `d645577`):
 
-- Generador completo del Iceberg REST static tree (`iceberg_rest_catalog.py`)
-- Generación de metadata + manifests Iceberg (`iceberg_metadata.py`)
-- Sync a R2 vía obstore (también S3, GCS, Azure) (`catalog_state.py`)
-- Probado end-to-end con DuckDB
-- Sin TODOs/FIXMEs pendientes
+- Complete generator for the Iceberg REST static tree (`iceberg_rest_catalog.py`)
+- Iceberg metadata + manifest generation (`iceberg_metadata.py`)
+- Sync to R2 via obstore (S3, GCS, Azure also supported) (`catalog_state.py`)
+- End-to-end tested with DuckDB
+- No outstanding TODOs/FIXMEs
 
-Listo para hacer un walk-through y decidir cómo lo llevamos al portolake actual.
+Ready for a walkthrough and a decision on how to bring it into the current portolake.
 
-## Preguntas para discutir
+## Questions to discuss
 
-1. ¿Sumamos este modo a portolake como segundo backend, o vive mejor como plugin separado?
-2. ¿Auth como capa transversal del plugin architecture, o configurada por backend?
-3. ¿Cuál es el caso de uso prioritario para CARTO ahora — federación inter-org, o publicación pública pura?
-4. Si seguimos adelante, ¿qué pieza portamos primero: el generador estático, o el modelo de auth por catálogo?
+1. Should we add this mode to portolake as a second backend, or does it live better as a separate plugin?
+2. Auth as a cross-cutting layer of the plugin architecture, or configured per backend?
+3. What's CARTO's priority use case right now — inter-org federation, or pure public publishing?
+4. If we move forward, which piece do we port first: the static generator, or the per-catalog auth model?
